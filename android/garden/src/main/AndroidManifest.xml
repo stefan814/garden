@@ -1,0 +1,2 @@
+<!-- Deliberately no INTERNET permission: an app that downloads models declares it itself. -->
+<manifest />

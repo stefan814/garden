@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Test app only: the library itself declares no INTERNET permission. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application android:label="Garden harness" android:extractNativeLibs="true"
+        android:networkSecurityConfig="@xml/net">
+        <activity android:name=".Harness" android:exported="true" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <service android:name=".LoadService" android:exported="false" />
+    </application>
+</manifest>

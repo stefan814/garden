@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="Garden spike" android:extractNativeLibs="true">
+        <activity android:name=".Spike" android:exported="true" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+    </application>
+</manifest>
