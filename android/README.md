@@ -50,3 +50,8 @@ garden.open(id).use { m ->                         // checks every file first; t
 tests/e2e.sh emulator-5580                   # 40 checks, two apps + fault-injecting server (emulator)
 tests/real-downloads.sh emulator-5580        # every catalog model from its real url, then loaded
 ```
+
+## License
+
+Apache-2.0 (see [LICENSE](../LICENSE)). The models in the catalog are not part of this repo and keep their own
+licenses; see [NOTICE](../NOTICE).
