@@ -1,0 +1,52 @@
+{
+  "_readme": "Garden catalog v1: the only place shared model handles come from. A file's identity in Android's shared store is sha256 + label + tag + expiry, so NEVER change a published model's id, file names, labels or hashes; add a new model id instead. Every url must serve exactly these bytes (they are SHA-checked).",
+  "scheme": 1,
+  "models": [
+    {
+      "id": "parakeet-tdt-110m-en-int8",
+      "title": "Parakeet 110M speech-to-text (English)",
+      "capability": "asr.en",
+      "license": "CC-BY-4.0 (NVIDIA NeMo), converted for sherpa-onnx",
+      "files": [
+        { "name": "encoder.int8.onnx", "size": 131113202, "sha256": "0f35509ddeb9b39002fb077d979a9fe74f06eb0bc4dd5c34f512f82e5111d657",
+          "urls": ["https://huggingface.co/punitd/sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000-int8/resolve/66a4fa70643dc7ce25c9b38b2f87e1b35ddad33d/encoder.int8.onnx"] },
+        { "name": "decoder.int8.onnx", "size": 3955863, "sha256": "f7c331c5504c2e593c76ed22b728e3f554af6c4a383dde862e719ced08b1da19",
+          "urls": ["https://huggingface.co/punitd/sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000-int8/resolve/66a4fa70643dc7ce25c9b38b2f87e1b35ddad33d/decoder.int8.onnx"] },
+        { "name": "joiner.int8.onnx", "size": 1411403, "sha256": "bf7dff69e9f2cdbe9943d70da358f38b361c115ba0105bae7e908e0d6ec782f6",
+          "urls": ["https://huggingface.co/punitd/sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000-int8/resolve/66a4fa70643dc7ce25c9b38b2f87e1b35ddad33d/joiner.int8.onnx"] },
+        { "name": "tokens.txt", "size": 9953, "sha256": "450e56bd2f036fe5b6aa821865838cc5aa9d8b0106134ce9a9ba0664abe6cd10",
+          "urls": ["https://huggingface.co/punitd/sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000-int8/resolve/66a4fa70643dc7ce25c9b38b2f87e1b35ddad33d/tokens.txt"] }
+      ]
+    },
+    {
+      "id": "silero-vad-v5",
+      "title": "Silero voice activity detector",
+      "capability": "vad",
+      "license": "MIT",
+      "files": [
+        { "name": "vad.onnx", "size": 643854, "sha256": "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6",
+          "urls": ["https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx"] }
+      ]
+    },
+    {
+      "id": "titanet-small-en",
+      "title": "TitaNet-small voiceprints",
+      "capability": "speaker.embedding",
+      "license": "CC-BY-4.0 (NVIDIA NeMo)",
+      "files": [
+        { "name": "embed.onnx", "size": 40257283, "sha256": "ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e",
+          "urls": ["https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/nemo_en_titanet_small.onnx"] }
+      ]
+    },
+    {
+      "id": "pyannote-seg-3.0",
+      "title": "pyannote speaker segmentation 3.0",
+      "capability": "speaker.segmentation",
+      "license": "MIT",
+      "files": [
+        { "name": "model.onnx", "size": 5992913, "sha256": "220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079",
+          "urls": ["https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/resolve/9403a6902bb58e3d5ae8c7e77c3422de279db2e0/model.onnx"] }
+      ]
+    }
+  ]
+}

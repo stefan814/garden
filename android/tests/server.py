@@ -5,7 +5,7 @@
   cutnorange  first request cut at half; later ones IGNORE Range (send 200 + everything)
   corrupt     every byte of the body is flipped
   dead        404
-Every request is logged to argv[2] as: <mode> <name> <range or ->"""
+Every request is logged to argv[2] as: <mode> <name> <range or ->. Port: argv[3], default 8765."""
 import http.server, os, sys
 ROOT, LOG = sys.argv[1], sys.argv[2]
 seen = set()
@@ -35,4 +35,4 @@ class H(http.server.BaseHTTPRequestHandler):
             self.connection.shutdown(2); return
         self.wfile.write(body)
 
-http.server.ThreadingHTTPServer(('0.0.0.0', 8765), H).serve_forever()
+http.server.ThreadingHTTPServer(('0.0.0.0', int(sys.argv[3]) if len(sys.argv) > 3 else 8765), H).serve_forever()

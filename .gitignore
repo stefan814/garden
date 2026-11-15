@@ -8,3 +8,6 @@ android/harness/src/a/assets/models/
 .DS_Store
 *.aar
 .kotlin/
+.build/
+.swiftpm/
+Package.resolved
