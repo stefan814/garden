@@ -35,6 +35,20 @@ public enum SystemSpeech {
         }
     }
 
+    /// One line on what this device offers, for logs and bug reports.
+    public static func diagnose(locale: Locale = .current) async -> String {
+        var out = "SpeechTranscriber.isAvailable=\(SpeechTranscriber.isAvailable)"
+        out += " transcriberLocale=\(await SpeechTranscriber.supportedLocale(equivalentTo: locale)?.identifier ?? "nil")"
+        out += " dictationLocale=\(await DictationTranscriber.supportedLocale(equivalentTo: locale)?.identifier ?? "nil")"
+        for engine in [Engine.transcriber, .dictation] {
+            guard let (m, _) = await module(locale: locale, forcing: engine) else { out += " \(engine)=none"; continue }
+            let status = await AssetInventory.status(forModules: [m])
+            let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [m])
+            out += " \(engine): assets=\(status) format=\(format.map { "\($0.sampleRate)Hz/\($0.commonFormat.rawValue)" } ?? "nil")"
+        }
+        return out
+    }
+
     /// Asks iOS to fetch the language model if it isn't installed. [progress] runs 0…1.
     public static func install(locale: Locale = .current, progress: (@Sendable (Double) -> Void)? = nil) async throws {
         guard let (module, _) = await module(locale: locale) else { throw SpeechError.unavailable }
@@ -77,6 +91,8 @@ public enum SystemSpeech {
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("garden-speech-\(UUID().uuidString).caf")
         defer { try? FileManager.default.removeItem(at: tmp) }
         do {
+            // No format means no usable model, even when AssetInventory says "installed" (the Simulator: every
+            // format then fails with "Model not available").
             guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [module]) else {
                 throw SpeechError.unavailable
             }
