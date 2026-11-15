@@ -71,17 +71,50 @@ public enum SystemSpeech {
         }
         let analyzer = SpeechAnalyzer(modules: [module], options: .init(priority: .userInitiated, modelRetention: .lingering))
         do {
-            if let last = try await analyzer.analyzeSequence(from: audio) {
-                try await analyzer.finalizeAndFinish(through: last)
-            } else {
-                await analyzer.cancelAndFinishNow()
+            // Convert to the analyzer's own format ourselves: iOS refuses some files (e.g. 16 kHz Int16 WAV) that
+            // macOS takes directly.
+            guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [module]) else {
+                throw SpeechError.unavailable
             }
+            let (input, feed) = AsyncStream<AnalyzerInput>.makeStream(bufferingPolicy: .unbounded)
+            try await analyzer.prepareToAnalyze(in: format)
+            try await analyzer.start(inputSequence: input)
+            try convert(audio, to: format) { feed.yield(AnalyzerInput(buffer: $0)) }
+            feed.finish()
+            try await analyzer.finalizeAndFinishThroughEndOfInput()
         } catch {
             collect.cancel()
+            await analyzer.cancelAndFinishNow()
             throw error
         }
         return try await collect.value
     }
+
+    /// Reads [file] a second at a time and hands out buffers in [format].
+    static func convert(_ file: AVAudioFile, to format: AVAudioFormat, _ out: (AVAudioPCMBuffer) -> Void) throws {
+        let src = file.processingFormat
+        let chunk = AVAudioFrameCount(src.sampleRate)
+        guard let converter = AVAudioConverter(from: src, to: format) else { throw ConvertError() }
+        var done = false
+        while !done {
+            guard let inBuf = AVAudioPCMBuffer(pcmFormat: src, frameCapacity: chunk) else { throw ConvertError() }
+            if file.framePosition < file.length { try file.read(into: inBuf, frameCount: chunk) }  // reading at the end throws
+            done = inBuf.frameLength == 0
+            let cap = AVAudioFrameCount(Double(max(inBuf.frameLength, 1)) * format.sampleRate / src.sampleRate) + 1024
+            guard let outBuf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: cap) else { throw ConvertError() }
+            var fed = false
+            var err: NSError?
+            let status = converter.convert(to: outBuf, error: &err) { _, state in
+                if done { state.pointee = .endOfStream; return nil }
+                if fed { state.pointee = .noDataNow; return nil }
+                fed = true; state.pointee = .haveData; return inBuf
+            }
+            if status == .error { throw err ?? ConvertError() }
+            if outBuf.frameLength > 0 { out(outBuf) }
+        }
+    }
+
+    struct ConvertError: Error, LocalizedError { var errorDescription: String? { "Couldn't convert the audio for speech recognition" } }
 
     public enum SpeechError: Error, LocalizedError {
         case unavailable

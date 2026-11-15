@@ -1,6 +1,6 @@
 # Garden — shared on-device models for Skald, Earshot and future apps
 
-Status: **Android library built and tested on emulator + Pixel 10a** (`android/`, 2026-11-14). **Wired into Skald Android** (branch `garden`, 2026-11-14: VAD, TitaNet, pyannote via Garden; Moonshine stays private until the Parakeet switch). Earshot not yet; iOS not started.
+Status: **Android library built and tested on emulator + Pixel 10a** (`android/`, 2026-11-14). **Wired into Skald Android** (branch `garden`, 2026-11-14: VAD, TitaNet, pyannote via Garden; Moonshine stays private until the Parakeet switch). Earshot not yet. **GardenKit (Swift) built 2026-11-14** (`apple/`, 13 tests on macOS) and **wired into Skald iOS** (branch `ios-garden`): chapters are transcribed with the iPhone's own speech recognition. No real iPhone has run it yet.
 
 ## Goal
 
@@ -122,16 +122,37 @@ Garden.release(modelId)                               // app no longer needs it
 - System engines get benchmarked before they become the default (ML Kit Basic speech on the Earshot call-audio set
   and Skald's TAZ test). Until then they're opt-in.
 
-## iOS design (`GardenKit`, Swift package)
+## iOS design (`GardenKit`, Swift package) — BUILT 2026-11-14
 
-- **System tier already in use:** Earshot iOS runs `SpeechTranscriber`/`DictationTranscriber`, and Skald iOS runs
-  Foundation Models. **Biggest concrete win:** Skald iOS has no transcription at all. Using `SpeechTranscriber` through
-  GardenKit fixes that without sherpa-onnx. It still needs a WER check on table audio.
-- **Shared tier:** App Group container `group.io.github.stefan814.garden`. It holds a `manifest.json` plus files named by
-  SHA-256 with a file lock. This only works between apps on the same team.
-  - **Unverified:** whether a free personal team can use App Groups at all. Skald iOS is free-provisioned.
-  - For the CoreML models (CAM++), this is about 30 MB, small.
-- **Download tier:** unchanged per app, then copied into the group container.
+`Package.swift` at the repo root, sources in `apple/`. Same catalog (a copied resource; a test fails if the copies differ).
+
+- **System tier: `SystemSpeech`.** Wraps `SpeechTranscriber`, or `DictationTranscriber` on devices without it.
+  - Calls: `status(locale:)` (ready / needsInstall / unavailable), `install`, and `transcribe(file)` → timed phrases.
+  - Audio is converted to the analyzer's preferred format first. iOS refused the 16 kHz Int16 WAV that macOS accepted.
+  - `SystemText.isAvailable` reports Foundation Models.
+  - Tested on macOS 27 with both engines: the test sentence comes back word for word.
+  - iOS 26+. Older iOS reports unavailable.
+- **Shared tier: an optional App Group container.**
+  - Files live at `Garden/blobs/<sha256>`. Each app that uses one leaves a marker at `Garden/users/<sha256>/<appID>`.
+  - A file is deleted when its last marker goes. `flock` on `Garden/.lock` serialises adopt, place and remove.
+  - `sharedContainer: nil` means private only. That's the default, because App Groups need the same team and it's
+    still unverified whether a free personal team gets them.
+  - **Known gap:** iOS can't tell us another app was deleted, so a deleted app's marker keeps the file until the user
+    removes the model in the remaining apps. `holders(id)` lists the markers for a settings screen.
+- **Private tier:** `Application Support/Garden`, excluded from backup.
+- **Download tier:**
+  - Resumable `Range` download over URLSession; tries every url, a few rounds, SHA-checked.
+  - A `200` reply to a Range request restarts the file. A `206` must start at our offset.
+  - Cancelling keeps the partial file.
+  - Same API as Android: `state` / `adopt` / `download(share:)` / `contribute` / `remove` / `open`.
+- **Parakeet can't run on iOS yet:** sherpa-onnx isn't in the iOS apps, so the shared tier has nothing to share on iOS
+  today. Skald iOS uses only the system tier.
+- **Skald iOS (branch `ios-garden`):**
+  - `IosTranscriber` works through queued chapters segment by segment and saves the transcript once the whole chapter
+    is done. Everyone is speaker 0.
+  - Writing the tale on iPhone is still to come.
+  - In the Simulator (no speech model), the chapter gets a plain note saying this iPhone can't write it down, and
+    nothing crashes. Real transcription has run on macOS only, through the same code.
 
 ## Earshot models — DECIDED 2026-11-14: one app, you choose
 
@@ -175,7 +196,7 @@ likely shape is a small companion "Garden" app that owns the file and hands out 
      models, because private copies are stored by hash.
 3. ✅ (partly, 2026-11-14) Wire into Skald `ModelSetup`: helpers resolve shared → adopt or download(share), old private copies are contributed at launch, and `Garden.open(ids)` serves seg+embed through one AssetManager for diarization. Still to do: switch Moonshine → Parakeet after the table-audio WER check.
 4. Wire into Earshot Android: drop bundled models, add the "use shared / download in Earshot" choice and INTERNET for it.
-5. `GardenKit` (Swift) + Skald iOS SpeechTranscriber.
+5. ✅ (2026-11-14) `GardenKit` (Swift) + Skald iOS transcription via SpeechTranscriber (branch `ios-garden`). Still to do: a run on a real iPhone, and a WER check on table audio.
 6. Optional `garden-mlkit` SystemProvider after the ML Kit speech benchmark.
 
 ## Decisions (2026-11-14)
