@@ -16,11 +16,15 @@ import java.io.Closeable
  * Close it when the engine is released.
  */
 class OpenModel internal constructor(
-    val model: Model,
+    /** Every model opened together (see [Garden.open] with several ids); [model] is the first. */
+    val models: List<Model>,
     val assets: AssetManager,
     private val fds: List<ParcelFileDescriptor>,
 ) : Closeable {
+    val model: Model get() = models.first()
     fun path(fileName: String): String = Handles.assetPath(model, model.file(fileName))
+    /** A file of one of several models opened together, for engines that take two models through one AssetManager. */
+    fun path(id: String, fileName: String): String = models.first { it.id == id }.let { Handles.assetPath(it, it.file(fileName)) }
     override fun close() = fds.forEach { runCatching { it.close() } }
 }
 

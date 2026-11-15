@@ -174,18 +174,26 @@ class Garden(
      * (sherpa-onnx abort()s the whole app on one). Keep the [OpenModel] open while the engine lives.
      */
     @WorkerThread
-    fun open(id: String): OpenModel {
-        val m = catalog[id]
+    fun open(id: String): OpenModel = open(listOf(id))
+
+    /**
+     * Opens several ready models behind ONE AssetManager, for engines that load two models through a single
+     * AssetManager (sherpa-onnx speaker diarization: segmentation + voiceprints). Use [OpenModel.path] with the id.
+     */
+    @WorkerThread
+    fun open(ids: List<String>): OpenModel {
+        val models = ids.distinct().map { catalog[it] }
         val fds = LinkedHashMap<String, ParcelFileDescriptor>()
         try {
-            for (f in m.files) {
+            for (m in models) for (f in m.files) {
+                val id = m.id
                 val pfd = (if (ownsShared(m, f)) openBlobOrNull(handle(m, f)) else null)
                     ?: (if (privateReady(f)) ParcelFileDescriptor.open(File(dir, f.sha256), ParcelFileDescriptor.MODE_READ_ONLY) else null)
                     ?: throw GardenException.NotReady(id, "${f.name} isn't on this phone")
                 if (pfd.statSize != f.size) { pfd.close(); throw GardenException.NotReady(id, "${f.name} has the wrong size") }
                 fds[Handles.assetPath(m, f)] = pfd
             }
-            return OpenModel(m, BlobAssets.assetManager(app, fds), fds.values.toList())
+            return OpenModel(models, BlobAssets.assetManager(app, fds), fds.values.toList())
         } catch (e: Exception) {
             fds.values.forEach { runCatching { it.close() } }
             throw e

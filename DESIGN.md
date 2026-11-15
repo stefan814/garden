@@ -1,6 +1,6 @@
 # Garden — shared on-device models for Skald, Earshot and future apps
 
-Status: **Android library built and tested on emulator + Pixel 10a** (`android/`, 2026-11-14). Not yet wired into Skald or Earshot; iOS not started. 2026-11-14.
+Status: **Android library built and tested on emulator + Pixel 10a** (`android/`, 2026-11-14). **Wired into Skald Android** (branch `garden`, 2026-11-14: VAD, TitaNet, pyannote via Garden; Moonshine stays private until the Parakeet switch). Earshot not yet; iOS not started.
 
 ## Goal
 
@@ -173,8 +173,7 @@ likely shape is a small companion "Garden" app that owns the file and hands out 
      `openWrite()` is called, so it can't serve as a resume point. Garden keeps its own byte count.
    - **Also found by review:** `state()` missed split models (fixed). Real catalogs may not list one file in two
      models, because private copies are stored by hash.
-3. Wire into Skald `ModelSetup` (resolve before download, contribute existing private files, switch Moonshine →
-   Parakeet after the table-audio WER check).
+3. ✅ (partly, 2026-11-14) Wire into Skald `ModelSetup`: helpers resolve shared → adopt or download(share), old private copies are contributed at launch, and `Garden.open(ids)` serves seg+embed through one AssetManager for diarization. Still to do: switch Moonshine → Parakeet after the table-audio WER check.
 4. Wire into Earshot Android: drop bundled models, add the "use shared / download in Earshot" choice and INTERNET for it.
 5. `GardenKit` (Swift) + Skald iOS SpeechTranscriber.
 6. Optional `garden-mlkit` SystemProvider after the ML Kit speech benchmark.
