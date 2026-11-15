@@ -1,0 +1,38 @@
+# Two copies of one tiny app (A and B) in the same App Group, to test GardenKit's shared store across apps.
+# Generate with: xcodegen   (tests/e2e.sh does this)
+name: GardenHarness
+options:
+  bundleIdPrefix: io.github.stefan814.garden.harness
+  deploymentTarget: { iOS: "17.0" }
+packages:
+  Garden: { path: ../.. }
+settings:
+  base:
+    CODE_SIGN_IDENTITY: "-"          # Simulator: ad-hoc signing still applies the App Group entitlement
+    CODE_SIGNING_REQUIRED: NO
+    GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_UILaunchScreen_Generation: YES
+    SWIFT_VERSION: "6.0"
+targetTemplates:
+  Harness:
+    type: application
+    platform: iOS
+    sources: [Harness]
+    dependencies: [{ package: Garden, product: GardenKit }]
+    entitlements:
+      path: Harness/Harness.entitlements
+      properties:
+        com.apple.security.application-groups: [group.io.github.stefan814.garden]
+targets:
+  HarnessA:
+    templates: [Harness]
+    settings: { base: { PRODUCT_BUNDLE_IDENTIFIER: io.github.stefan814.garden.harness.a } }
+  HarnessB:
+    templates: [Harness]
+    settings: { base: { PRODUCT_BUNDLE_IDENTIFIER: io.github.stefan814.garden.harness.b } }
+  HarnessC:   # control: same app WITHOUT the App Group entitlement
+    type: application
+    platform: iOS
+    sources: [Harness]
+    dependencies: [{ package: Garden, product: GardenKit }]
+    settings: { base: { PRODUCT_BUNDLE_IDENTIFIER: io.github.stefan814.garden.harness.c } }

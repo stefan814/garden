@@ -143,6 +143,15 @@ Garden.release(modelId)                               // app no longer needs it
     still unverified whether a free personal team gets them.
   - **Known gap:** iOS can't tell us another app was deleted, so a deleted app's marker keeps the file until the user
     removes the model in the remaining apps. `holders(id)` lists the markers for a settings screen.
+- **Two-app test in the Simulator (`apple/harness/e2e.sh`, 23 checks, PASSED 2026-11-14 on an iOS 27.2 Simulator):**
+  - Setup: apps A and B share `group.io.github.stefan814.garden`. App C has no App Group.
+  - One download, two apps: B adopts A's copy with no network and reads every byte. C gets no group container, so
+    the Simulator does enforce the entitlement.
+  - The file stays until its last holder lets go. Private copies stay private. A cut download resumes with Range,
+    and corrupt bytes are refused.
+  - Uninstalling A leaves B reading. A reinstalled A finds its old marker, which is the stale-marker case.
+  - Once every group app is uninstalled, iOS deletes the group container.
+  - Not covered: real-device signing. Whether a free personal team may use App Groups is still unknown.
 - **Private tier:** `Application Support/Garden`, excluded from backup.
 - **Download tier:**
   - Resumable `Range` download over URLSession; tries every url, a few rounds, SHA-checked.

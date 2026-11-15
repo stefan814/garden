@@ -39,5 +39,9 @@ swift test        # catalog, two apps sharing one copy, resume/corrupt/mirror/ca
 GARDEN_LONG_MINUTES=40 swift test --filter longRecording   # long-recording speed + memory check
 ```
 
+```bash
+apple/harness/e2e.sh <simulator udid>   # two apps sharing one App Group, 23 checks (needs xcodegen)
+```
+
 The download tests run `android/tests/server.py` (needs `python3`) on a random port. The speech test needs macOS 26+
 with the English speech model installed.

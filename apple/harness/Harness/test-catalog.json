@@ -1,0 +1,5 @@
+{ "scheme": 1, "models": [
+  { "id": "t-share", "title": "t", "capability": "vad", "license": "", "files": [ { "name": "vad.onnx", "size": 643854, "sha256": "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6", "urls": ["http://127.0.0.1:8765/ok/vad.onnx"] } ] },
+  { "id": "t-resume", "title": "t", "capability": "speaker.embedding", "license": "", "files": [ { "name": "embed.onnx", "size": 40257283, "sha256": "ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e", "urls": ["http://127.0.0.1:8765/cut/embed.onnx"] } ] },
+  { "id": "t-corrupt", "title": "t", "capability": "vad", "license": "", "files": [ { "name": "vad.onnx", "size": 643854, "sha256": "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6", "urls": ["http://127.0.0.1:8765/corrupt/vad.onnx"] } ] }
+] }

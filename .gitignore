@@ -11,3 +11,4 @@ android/harness/src/a/assets/models/
 .build/
 .swiftpm/
 Package.resolved
+apple/harness/*.xcodeproj/
