@@ -1,3 +1,4 @@
+import AVFoundation
 import CryptoKit
 import Foundation
 import Testing
@@ -281,21 +282,30 @@ final class Progress: @unchecked Sendable {
     func longRecording() async throws {
         guard #available(macOS 26, iOS 26, *) else { return }
         let minutes = Int(ProcessInfo.processInfo.environment["GARDEN_LONG_MINUTES"]!)!
-        let wav = try Data(contentsOf: try #require(Bundle.module.url(forResource: "Resources/test", withExtension: "wav")))
-        let pcm = wav.dropFirst(44), silence = Data(count: 16_000)  // 0.5 s between repeats
-        let reps = minutes * 60 * 32_000 / (pcm.count + silence.count)
-        var body = Data(); body.reserveCapacity(reps * (pcm.count + silence.count))
-        for _ in 0..<reps { body.append(pcm); body.append(silence) }
-        var h = Data(wav.prefix(44))
-        func put(_ v: UInt32, at o: Int) { withUnsafeBytes(of: v.littleEndian) { h.replaceSubrange(o..<o + 4, with: $0) } }
-        put(UInt32(36 + body.count), at: 4); put(UInt32(body.count), at: 40)
+        let audio = try AVAudioFile(forReading: try #require(Bundle.module.url(forResource: "Resources/test", withExtension: "wav")),
+                                    commonFormat: .pcmFormatInt16, interleaved: true)
+        let one = try #require(AVAudioPCMBuffer(pcmFormat: audio.processingFormat, frameCapacity: AVAudioFrameCount(audio.length)))
+        try audio.read(into: one)
+        let silence = try #require(AVAudioPCMBuffer(pcmFormat: audio.processingFormat, frameCapacity: 8_000))  // 0.5 s
+        silence.frameLength = 8_000
+        let reps = minutes * 60 * 16_000 / (Int(one.frameLength) + 8_000)
         let file = try tempDir("long").appendingPathComponent("long.wav")
-        try (h + body).write(to: file)
-        body = Data()
+        do {
+            let w = try AVAudioFile(forWriting: file, settings: audio.fileFormat.settings, commonFormat: .pcmFormatInt16, interleaved: true)
+            for _ in 0..<reps { try w.write(from: one); try w.write(from: silence) }
+        }
         let started = Date()
         let phrases = try await SystemSpeech.transcribe(file, locale: Locale(identifier: "en-US"))
         let goblins = phrases.filter { $0.text.lowercased().contains("goblin") }.count
         print("LONG: \(minutes) min, \(reps) sentences, \(phrases.count) phrases, \(goblins) with 'goblin', \(Int(Date().timeIntervalSince(started))) s, last ends \(Int(phrases.last?.end ?? 0)) s")
         #expect(goblins > reps * 9 / 10)
+    }
+
+    @Test func emptyFileGivesNoPhrases() async throws {
+        guard #available(macOS 26, iOS 26, *) else { return }
+        let file = try tempDir("empty").appendingPathComponent("empty.wav")
+        let fmt = try #require(AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: true))
+        do { _ = try AVAudioFile(forWriting: file, settings: fmt.settings, commonFormat: .pcmFormatInt16, interleaved: true) }
+        #expect(try await SystemSpeech.transcribe(file, locale: Locale(identifier: "en-US")).isEmpty)
     }
 }

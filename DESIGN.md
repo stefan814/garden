@@ -129,6 +129,10 @@ Garden.release(modelId)                               // app no longer needs it
 - **System tier: `SystemSpeech`.** Wraps `SpeechTranscriber`, or `DictationTranscriber` on devices without it.
   - Calls: `status(locale:)` (ready / needsInstall / unavailable), `install`, and `transcribe(file)` → timed phrases.
   - Audio is converted to the analyzer's preferred format first. iOS refused the 16 kHz Int16 WAV that macOS accepted.
+  - The conversion goes to a temp file on disk, which the analyzer then reads at its own pace. A 40-minute file
+    transcribed in 37 s on this Mac at 46 MB peak, catching 545 of 552 sentences. Empty files return no phrases;
+    before this fix they hung forever.
+    `GARDEN_LONG_MINUTES=40 swift test --filter longRecording` runs this check.
   - `SystemText.isAvailable` reports Foundation Models.
   - Tested on macOS 27 with both engines: the test sentence comes back word for word.
   - iOS 26+. Older iOS reports unavailable.

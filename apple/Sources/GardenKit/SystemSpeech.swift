@@ -52,6 +52,7 @@ public enum SystemSpeech {
         guard let (module, kind) = await module(locale: locale, forcing: engine) else { throw SpeechError.unavailable }
         if let req = try await AssetInventory.assetInstallationRequest(supporting: [module]) { try await req.downloadAndInstall() }
         let audio = try AVAudioFile(forReading: file)
+        if audio.length == 0 { return [] }  // the analyzer never finishes on an empty file
         let collect: Task<[Phrase], Error>
         switch kind {
         case .transcriber:
@@ -83,7 +84,9 @@ public enum SystemSpeech {
             if let last = try await analyzer.analyzeSequence(from: AVAudioFile(forReading: tmp)) {
                 try await analyzer.finalizeAndFinish(through: last)
             } else {
+                collect.cancel()
                 await analyzer.cancelAndFinishNow()
+                return []
             }
         } catch {
             collect.cancel()

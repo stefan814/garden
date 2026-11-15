@@ -36,6 +36,7 @@ let url = try garden.open("silero-vad-v5").url("vad.onnx")             // throws
 
 ```bash
 swift test        # catalog, two apps sharing one copy, resume/corrupt/mirror/cancel downloads, system speech
+GARDEN_LONG_MINUTES=40 swift test --filter longRecording   # long-recording speed + memory check
 ```
 
 The download tests run `android/tests/server.py` (needs `python3`) on a random port. The speech test needs macOS 26+
