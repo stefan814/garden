@@ -29,17 +29,10 @@ sealed interface ModelState {
 }
 
 /**
- * A model the phone itself provides (Apple Intelligence's peers on Android: AICore/ML Kit). Garden only reports it;
- * the app drives the system engine. Providers live in optional modules so the core has no Google dependency.
- */
-data class SystemEngine(val capability: String, val name: String)
-
-fun interface SystemProvider { fun find(capability: String): SystemEngine? }
-
-/**
  * Shared on-device models for Skald, Earshot and future apps.
  *
- * Order an app should follow: [system] → [state] (Ready / SharedAvailable / Missing) → [adopt] or [download].
+ * Only for models the phone doesn't have built in (Gemini Nano and other system models are the app's business).
+ * Order an app should follow: [state] (Ready / SharedAvailable / Missing) → [adopt] or [download] → [open].
  * Blocking calls are marked @WorkerThread. Shared files sit in Android's BlobStoreManager, keyed by SHA-256, readable
  * by any app; this app co-commits and leases every shared file it uses so the copy stays findable and alive even if
  * the app that first downloaded it is uninstalled.
@@ -47,7 +40,6 @@ fun interface SystemProvider { fun find(capability: String): SystemEngine? }
 class Garden(
     context: Context,
     val catalog: Catalog = Catalog.bundled(context),
-    private val systemProviders: List<SystemProvider> = emptyList(),
     /** Shown in Settings next to each shared file this app keeps. */
     private val leaseDescription: String = "Used by ${context.applicationInfo.loadLabel(context.packageManager)}",
     /** First retry delay for downloads (doubles each retry). Tests make it short. */
@@ -62,9 +54,6 @@ class Garden(
     private val http = Http(retryDelayMs, downloadAttempts)
 
     // ---- what's there ----------------------------------------------------------------------------------------------
-
-    /** A model the phone already has built in for [capability], if a provider found one. */
-    fun system(capability: String): SystemEngine? = systemProviders.firstNotNullOfOrNull { it.find(capability) }
 
     @WorkerThread
     fun state(id: String): ModelState {

@@ -17,8 +17,7 @@ let package = Package(
         .testTarget(
             name: "GardenKitTests",
             dependencies: ["GardenKit"],
-            path: "apple/Tests/GardenKitTests",
-            resources: [.copy("Resources")]
+            path: "apple/Tests/GardenKitTests"
         ),
     ]
 )

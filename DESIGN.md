@@ -3,7 +3,7 @@
 Status (2026-11-14): two libraries, both working.
 - **Android** (`android/`): 40 end-to-end checks pass on the emulator and a Pixel 10a; every real catalog model
   downloads and loads.
-- **iPhone** (`apple/`, GardenKit): 15 tests pass on macOS; 23 two-app checks pass in the iOS Simulator. Not run on a
+- **iPhone** (`apple/`, GardenKit): 12 tests pass on macOS; 23 two-app checks pass in the iOS Simulator. Not run on a
   real iPhone yet.
 
 This repo holds Garden only. Each app (Skald, Earshot, …) adds Garden in its own repo; nothing app-specific lives
@@ -11,15 +11,15 @@ here.
 
 ## Goal
 
-An app asks for a *capability* ("English speech-to-text", "voice activity", "voiceprints", "small text model").
-Garden answers in this order:
+Garden shares models the phone doesn't have built in (Parakeet, Silero VAD, TitaNet, pyannote, …), so each is stored
+once per phone however many of our apps use it. For a model in the catalog, Garden answers in this order:
 
-1. **System** — the phone already has one (Apple Foundation Models / SpeechAnalyzer; Android AICore / ML Kit GenAI).
-2. **Shared** — another of our apps already put the exact file on the phone.
-3. **Download** — the app fetches it (today's code), then contributes it to the shared store for the next app.
+1. **Shared** — another of our apps already put the exact file on the phone.
+2. **Download** — the app fetches it, then contributes it to the shared store for the next app.
 
-Garden only *finds* models. It returns "use the system engine" or a readable file. Engines (sherpa-onnx,
-LiteRT-LM, CoreML, Foundation Models) stay in each app.
+**Out of scope (decided 2026-11-14): models built into the phone** (Apple speech, Apple Intelligence / Foundation
+Models, Gemini Nano, ML Kit). The OS already shares them, so each app calls them directly. Garden hands out readable
+files only; engines (sherpa-onnx, LiteRT-LM, CoreML) stay in each app.
 
 ## What exists already (research, 2026-11-14)
 
@@ -61,7 +61,7 @@ changes timings).
   - Leases are checked with `getRemainingLeaseQuotaBytes()`. If quota runs out, the app falls back to its private storage.
 - **Re-resolve on every load.** Users can clear shared data in Settings, so a blob seen yesterday may be gone today.
 - **Gemma and other text models never go in BlobStore.** 2–2.6 GB is over any normal phone's lease quota, and an unleased
-  blob would quietly vanish. Text models resolve as **AICore/Gemini Nano → in-app download (private)**.
+  blob would quietly vanish. Downloaded text models stay private to the app until a bigger shared store exists.
 
 ### The gate — PASSED 2026-11-14 (emulator, API 36, arm64, SELinux enforcing)
 
@@ -114,8 +114,7 @@ Rules this sets for the library:
 ### Library shape (`garden-android`, plain Kotlin/Android library)
 
 ```kotlin
-sealed interface Resolution {
-  data class System(val engine: SystemEngine) : Resolution       // MlKitSpeech(Basic|Advanced), GeminiNano
+sealed interface Resolution {      // early sketch; the built library's API is in android/README.md
   data class Shared(val assets: AssetManager, val paths: Map<String, String>) : Resolution // blob fds served as assets (spike-proven), already leased
   data class Download(val files: List<CatalogFile>, val bytes: Long) : Resolution
 }
@@ -124,25 +123,12 @@ Garden.contribute(file: CatalogFile, source: File)   // after an in-app download
 Garden.release(modelId)                               // app no longer needs it
 ```
 
-- Brought in as a Gradle composite build (`includeBuild("../garden/android")`) or a submodule. Each app also keeps
-  `Prefs.preferSystem` so you can pin to the shared file when you need repeatable results.
-- System engines get benchmarked before they become the default (ML Kit Basic speech on the Earshot call-audio set
-  and Skald's TAZ test). Until then they're opt-in.
+- Brought in as a Gradle composite build (`includeBuild("../garden/android")`) or a submodule.
 
 ## iOS design (`GardenKit`, Swift package) — BUILT 2026-11-14
 
 `Package.swift` at the repo root, sources in `apple/`. Same catalog (a copied resource; a test fails if the copies differ).
 
-- **System tier: `SystemSpeech`.** Wraps `SpeechTranscriber`, or `DictationTranscriber` on devices without it.
-  - Calls: `status(locale:)` (ready / needsInstall / unavailable), `install`, and `transcribe(file)` → timed phrases.
-  - Audio is converted to the analyzer's preferred format first. iOS refused the 16 kHz Int16 WAV that macOS accepted.
-  - The conversion goes to a temp file on disk, which the analyzer then reads at its own pace. A 40-minute file
-    transcribed in 37 s on this Mac at 46 MB peak, catching 545 of 552 sentences. Empty files return no phrases;
-    before this fix they hung forever.
-    `GARDEN_LONG_MINUTES=40 swift test --filter longRecording` runs this check.
-  - `SystemText.isAvailable` reports Foundation Models.
-  - Tested on macOS 27 with both engines: the test sentence comes back word for word.
-  - iOS 26+. Older iOS reports unavailable.
 - **Shared tier: an optional App Group container.**
   - Files live at `Garden/blobs/<sha256>`. Each app that uses one leaves a marker at `Garden/users/<sha256>/<appID>`.
   - A file is deleted when its last marker goes. `flock` on `Garden/.lock` serialises adopt, place and remove.
@@ -190,7 +176,7 @@ likely shape is a small companion "Garden" app that owns the file and hands out 
    k2-fsa only ships it as a tar.bz2. The SHA check guarantees the bytes, but not that the mirror stays up. Each file
    takes several `urls` (tested), so a self-hosted copy can be added as a second source.
 2. ✅ `garden-android` (`android/garden`), see `android/README.md`. API: `state` → `adopt` / `download(share)` /
-   `contribute` → `open` (AssetManager + paths) → `remove`, plus a `system()` hook.
+   `contribute` → `open` (AssetManager + paths) → `remove`.
    - Handle scheme frozen: tag `garden/v1/<id>/<file>`, label `Garden model <id> (<file>)`, expiry 0, public access.
    - The library manifest declares no INTERNET permission.
    - Tests:
@@ -208,12 +194,11 @@ likely shape is a small companion "Garden" app that owns the file and hands out 
      `openWrite()` is called, so it can't serve as a resume point. Garden keeps its own byte count.
    - **Also found by review:** `state()` missed split models (fixed). Real catalogs may not list one file in two
      models, because private copies are stored by hash.
-3. ✅ `GardenKit` (`apple/`), see `apple/README.md`. Same catalog and the same API as Android, plus `SystemSpeech`
-   (the phone's own speech-to-text). Two-app Simulator test: `apple/harness/e2e.sh`.
+3. ✅ `GardenKit` (`apple/`), see `apple/README.md`. Same catalog and the same API as Android. Two-app Simulator test:
+   `apple/harness/e2e.sh`.
 4. Adding Garden to each app happens in that app's repo, not here: Skald Android and iPhone, Earshot Android and
    iPhone.
 5. Not done: a real-iPhone run, including whether a free personal team may use App Groups.
-6. Optional `garden-mlkit` SystemProvider after the ML Kit speech benchmark.
 
 ## Decisions (2026-11-14)
 

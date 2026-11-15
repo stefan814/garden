@@ -30,8 +30,8 @@ garden.open(id).use { m ->                         // checks every file first; t
 - **Moving existing files in without a download.** For Skald's old private copies or Earshot's APK assets, use
   `garden.contribute(id) { file -> inputStreamOrNull }`. Hashes are checked.
 - **Letting go.** `garden.remove(id)` releases this app's hold. A copy other apps still use stays.
-- **Model the phone already has.** `garden.system(capability)` reports one when you pass a `SystemProvider`. None
-  ships yet, because ML Kit comes after its benchmark.
+- **Built-in models aren't Garden's job.** Gemini Nano, ML Kit and other models the phone ships with are called by the
+  app directly. Garden only shares models the phone doesn't have.
 - **INTERNET permission.** The library doesn't declare it. An app that calls `download` declares it itself.
 
 ## Rules the tests taught us
