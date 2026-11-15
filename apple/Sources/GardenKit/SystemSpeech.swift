@@ -70,18 +70,21 @@ public enum SystemSpeech {
             }
         }
         let analyzer = SpeechAnalyzer(modules: [module], options: .init(priority: .userInitiated, modelRetention: .lingering))
+        // Convert to the analyzer's own format ourselves (iOS refuses some files, e.g. 16 kHz Int16 WAV, that macOS
+        // takes), into a temp file on disk so a three-hour recording never sits in memory. The analyzer then reads
+        // that file at its own pace.
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("garden-speech-\(UUID().uuidString).caf")
+        defer { try? FileManager.default.removeItem(at: tmp) }
         do {
-            // Convert to the analyzer's own format ourselves: iOS refuses some files (e.g. 16 kHz Int16 WAV) that
-            // macOS takes directly.
             guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [module]) else {
                 throw SpeechError.unavailable
             }
-            let (input, feed) = AsyncStream<AnalyzerInput>.makeStream(bufferingPolicy: .unbounded)
-            try await analyzer.prepareToAnalyze(in: format)
-            try await analyzer.start(inputSequence: input)
-            try convert(audio, to: format) { feed.yield(AnalyzerInput(buffer: $0)) }
-            feed.finish()
-            try await analyzer.finalizeAndFinishThroughEndOfInput()
+            try convert(audio, to: format, file: tmp)
+            if let last = try await analyzer.analyzeSequence(from: AVAudioFile(forReading: tmp)) {
+                try await analyzer.finalizeAndFinish(through: last)
+            } else {
+                await analyzer.cancelAndFinishNow()
+            }
         } catch {
             collect.cancel()
             await analyzer.cancelAndFinishNow()
@@ -90,8 +93,10 @@ public enum SystemSpeech {
         return try await collect.value
     }
 
-    /// Reads [file] a second at a time and hands out buffers in [format].
-    static func convert(_ file: AVAudioFile, to format: AVAudioFormat, _ out: (AVAudioPCMBuffer) -> Void) throws {
+    /// Converts [file] a second at a time into a new file at [dest] in [format].
+    static func convert(_ file: AVAudioFile, to format: AVAudioFormat, file dest: URL) throws {
+        let writer = try AVAudioFile(forWriting: dest, settings: format.settings, commonFormat: format.commonFormat,
+                                     interleaved: format.isInterleaved)
         let src = file.processingFormat
         let chunk = AVAudioFrameCount(src.sampleRate)
         guard let converter = AVAudioConverter(from: src, to: format) else { throw ConvertError() }
@@ -110,7 +115,7 @@ public enum SystemSpeech {
                 fed = true; state.pointee = .haveData; return inBuf
             }
             if status == .error { throw err ?? ConvertError() }
-            if outBuf.frameLength > 0 { out(outBuf) }
+            if outBuf.frameLength > 0 { try writer.write(from: outBuf) }
         }
     }
 
