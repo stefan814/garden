@@ -1,4 +1,4 @@
-package io.github.stefan814.garden
+package io.github.stefan814.modellibrary
 
 import android.content.Context
 import android.content.res.AssetFileDescriptor
@@ -16,7 +16,7 @@ import java.io.Closeable
  * Close it when the engine is released.
  */
 class OpenModel internal constructor(
-    /** Every model opened together (see [Garden.open] with several ids); [model] is the first. */
+    /** Every model opened together (see [ModelLibrary.open] with several ids); [model] is the first. */
     val models: List<Model>,
     val assets: AssetManager,
     private val fds: List<ParcelFileDescriptor>,

@@ -17,13 +17,13 @@ import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractor
 import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractorConfig
 import com.k2fsa.sherpa.onnx.Vad
 import com.k2fsa.sherpa.onnx.VadModelConfig
-import io.github.stefan814.garden.Catalog
-import io.github.stefan814.garden.Garden
-import io.github.stefan814.garden.ModelState
+import io.github.stefan814.modellibrary.Catalog
+import io.github.stefan814.modellibrary.ModelLibrary
+import io.github.stefan814.modellibrary.ModelState
 import kotlin.math.sqrt
 
 /**
- * Test driver for the Garden library, installed as two packages (…harness.a, …harness.b) so cross-app sharing can be
+ * Test driver for the Model Library, installed as two packages (…harness.a, …harness.b) so cross-app sharing can be
  * exercised. `adb shell am start -n <pkg>/io.github.stefan814.garden.harness.Harness --es do <step> --es model <id>
  * [--es catalog test] [--ez share false] [--ei attempts 1]`. Every line is logged with tag GARDEN; tests/e2e.sh asserts.
  */
@@ -59,7 +59,7 @@ private class Steps(private val ctx: Context, intent: Intent) {
         Catalog.parse(ctx.assets.open("test-catalog.json").bufferedReader().use { it.readText() }
         // On a real phone the host server is reached through `adb reverse` at 127.0.0.1 instead of the emulator's 10.0.2.2.
         .replace("10.0.2.2", intent.getStringExtra("host") ?: "10.0.2.2"), allowSameFile = true) else Catalog.fromAsset(ctx, "real-catalog.json")
-    private val garden = Garden(ctx, catalog, retryDelayMs = 200, downloadAttempts = intent.getIntExtra("attempts", 4))
+    private val library = ModelLibrary(ctx, catalog, retryDelayMs = 200, downloadAttempts = intent.getIntExtra("attempts", 4))
     private val share = intent.getBooleanExtra("share", true)
     private val skip = intent.getStringExtra("skip")
 
@@ -70,15 +70,15 @@ private class Steps(private val ctx: Context, intent: Intent) {
                 "state" -> {}
                 "download" -> {
                     var last = -1L
-                    garden.download(id, share) { done, total -> if (done == total || done - last > 10_000_000) { log("progress $done/$total"); last = done } }
+                    library.download(id, share) { done, total -> if (done == total || done - last > 10_000_000) { log("progress $done/$total"); last = done } }
                 }
-                "adopt" -> garden.adopt(id)
-                "contribute" -> garden.contribute(id, share) { f ->
+                "adopt" -> library.adopt(id)
+                "contribute" -> library.contribute(id, share) { f ->
                     // Any bundled copy of this file name (test models reuse the real ones); --es skip <name> leaves one out.
                     if (f.name == skip) null
                     else ctx.assets.list("models").orEmpty().firstNotNullOfOrNull { d -> runCatching { ctx.assets.open("models/$d/${f.name}") }.getOrNull() }
                 }
-                "remove" -> garden.remove(id)
+                "remove" -> library.remove(id)
                 "load" -> load(id, where, closeEarly = false)
                 "loadclose" -> load(id, where, closeEarly = true)
                 "fdloop" -> {
@@ -93,7 +93,7 @@ private class Steps(private val ctx: Context, intent: Intent) {
                 else -> log("unknown step $step")
             }
         } catch (t: Throwable) { log("ERROR ${t.javaClass.simpleName}: ${t.message}") }
-        log("STATE $id = ${describe(garden.state(id))}")
+        log("STATE $id = ${describe(library.state(id))}")
         log("== done $step")
     }
 
@@ -103,10 +103,10 @@ private class Steps(private val ctx: Context, intent: Intent) {
         is ModelState.Missing -> "Missing(partial=${if (s.partialBytes > 0) "yes" else "no"})"
     }
 
-    /** Opens via Garden and runs the right engine. [closeEarly]: close the OpenModel right after the engine is built. */
+    /** Opens via the Model Library and runs the right engine. [closeEarly]: close the OpenModel right after the engine is built. */
     private fun load(id: String, where: String, closeEarly: Boolean, quiet: Boolean = false) {
         val m = catalog[id]
-        val open = garden.open(id)
+        val open = library.open(id)
         val audio = wav()
         val result = when (m.capability) {
             "asr.en" -> {

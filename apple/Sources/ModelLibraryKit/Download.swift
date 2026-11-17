@@ -1,6 +1,6 @@
 import Foundation
 
-extension Garden {
+extension ModelLibrary {
     /// Fetches one file into its partial path: resumes with Range, tries each url, retries a few rounds,
     /// SHA-checks the result. On return the partial file is complete and verified.
     func fetch(_ f: ModelFile, onBytes: @escaping @Sendable (Int64) -> Void) async throws {
@@ -20,10 +20,10 @@ extension Garden {
                 guard Self.size(part) == f.size else { lastError = "ended at \(Self.size(part) ?? 0) of \(f.size) bytes"; continue }
                 if try Self.sha256(part) == f.sha256 { return }
                 try? FileManager.default.removeItem(at: part)
-                lastError = GardenError.checksum(f.name).localizedDescription
+                lastError = ModelLibraryError.checksum(f.name).localizedDescription
             }
         }
-        throw GardenError.download(f.name, lastError)
+        throw ModelLibraryError.download(f.name, lastError)
     }
 
     private func truncate(_ u: URL, to n: Int64) throws {

@@ -1,5 +1,5 @@
 import Foundation
-import GardenKit
+import ModelLibraryKit
 
 // One step per launch: `simctl launch --console-pty <device> <bundle> -do <step> -model <id> [-share 0]`.
 // Prints "GARDEN ..." lines, then "== done". tests/e2e.sh reads them.
@@ -12,11 +12,11 @@ func say(_ s: String) { print("GARDEN \(app) \(s)") }
 
 Task {
     do {
-        let group = Garden.appGroupContainer("group.io.github.stefan814.garden")
+        let group = ModelLibrary.appGroupContainer("group.io.github.stefan814.garden")
         say("GROUP \(group == nil ? "none" : "ok")")
         let catalog = try Catalog.parse(Data(contentsOf: Bundle.main.url(forResource: "test-catalog", withExtension: "json")!),
                                         allowSameFile: true)
-        let g = try Garden(appID: Bundle.main.bundleIdentifier!, sharedContainer: group, catalog: catalog,
+        let g = try ModelLibrary(appID: Bundle.main.bundleIdentifier!, sharedContainer: group, catalog: catalog,
                            downloadAttempts: 2, retryDelay: .milliseconds(200))
         switch step {
         case "state": break

@@ -1,4 +1,4 @@
-package io.github.stefan814.garden
+package io.github.stefan814.modellibrary
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -23,11 +23,11 @@ class CatalogTest {
         assertEquals("96feede8f0b14b2e3b2e5674c213b0ffdae7270de852f7be0b6e30e68a5e6611", sha)
     }
 
-    @Test fun `files Garden listed before keep their v1 names, whatever the app calls them`() {
+    @Test fun `files the library listed before keep their v1 names, whatever the app calls them`() {
         assertEquals(listOf(Handles.Name("Garden model silero-vad-v5 (vad.onnx)", "garden/v1/silero-vad-v5/vad.onnx")), handles.names(vad))
         val m = Catalog.parse(json)["my-vad"]
         assertEquals("garden/v1/silero-vad-v5/vad.onnx", handles.names(m.files[0].sha256).first().tag)
-        assertEquals("garden/my-vad/detector.onnx", Handles.assetPath(m, m.files[0]))
+        assertEquals("modellibrary/my-vad/detector.onnx", Handles.assetPath(m, m.files[0]))
     }
 
     @Test fun `any other file is named by its hash alone`() {
@@ -59,7 +59,7 @@ class CatalogTest {
         assertTrue(runCatching { Catalog(listOf(Model("x", emptyList()))) }.isFailure)
     }
 
-    @Test fun `digest round trips`() = assertEquals(vad, Garden.hex(Handles.digest(vad)))
+    @Test fun `digest round trips`() = assertEquals(vad, ModelLibrary.hex(Handles.digest(vad)))
 
     @Test fun `rejects bad entries`() {
         fun bad(edit: (String) -> String) = runCatching { Catalog.parse(edit(json)) }.isFailure

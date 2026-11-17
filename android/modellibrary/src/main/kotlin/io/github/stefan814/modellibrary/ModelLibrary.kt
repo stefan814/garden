@@ -1,4 +1,4 @@
-package io.github.stefan814.garden
+package io.github.stefan814.modellibrary
 
 import android.app.blob.BlobHandle
 import android.app.blob.BlobStoreManager
@@ -20,11 +20,11 @@ enum class Where { SHARED, PRIVATE }
 
 /** What an app can do with a model right now. Drives the "use shared / download" choice screen. */
 sealed interface ModelState {
-    /** This app holds the model and can [Garden.open] it. */
+    /** This app holds the model and can [ModelLibrary.open] it. */
     data class Ready(val where: Where) : ModelState
-    /** Another app put it in the shared store. [Garden.adopt] makes it ours with no network. */
+    /** Another app put it in the shared store. [ModelLibrary.adopt] makes it ours with no network. */
     data class SharedAvailable(val bytes: Long) : ModelState
-    /** Not on the phone. [partialBytes] > 0 means a paused download that [Garden.download] resumes. */
+    /** Not on the phone. [partialBytes] > 0 means a paused download that [ModelLibrary.download] resumes. */
     data class Missing(val bytes: Long, val partialBytes: Long) : ModelState
 }
 
@@ -38,7 +38,7 @@ sealed interface ModelState {
  * by any app; this app co-commits and leases every shared file it uses so the copy stays findable and alive even if
  * the app that first downloaded it is uninstalled.
  */
-class Garden(
+class ModelLibrary(
     context: Context,
     /** This app's models (e.g. [Catalog.fromAsset]). */
     val catalog: Catalog,
@@ -52,6 +52,7 @@ class Garden(
     private val app = context.applicationContext
     private val bsm = app.getSystemService(BlobStoreManager::class.java)
     // Fixed names: they held private copies and download progress before handle scheme 2, and must keep doing so.
+    // "garden": the library's old name, kept on purpose. Phones already hold private copies under these names.
     private val prefs = app.getSharedPreferences("garden.v1", Context.MODE_PRIVATE)
     private val dir = File(app.filesDir, "garden/v1").apply { mkdirs() }
     private val names = Handles.bundled(app)
@@ -88,8 +89,8 @@ class Garden(
         val toShare = m.files.filterNot { usable(it) }
         val shared = canShare(toShare)
         for (f in toShare) {
-            val n = visibleAs(f) ?: throw GardenException.NotReady(id, "${f.name} is no longer shared")
-            val src = openBlobOrNull(handle(f, n)) ?: throw GardenException.NotReady(id, "${f.name} is no longer shared")
+            val n = visibleAs(f) ?: throw ModelLibraryException.NotReady(id, "${f.name} is no longer shared")
+            val src = openBlobOrNull(handle(f, n)) ?: throw ModelLibraryException.NotReady(id, "${f.name} is no longer shared")
             src.use {
                 if (shared) {
                     // Co-commit under the name it's shared as: the system keeps one copy for every app.
@@ -129,7 +130,7 @@ class Garden(
     }
 
     /**
-     * Puts files this app already has (APK assets, or an older private copy from before Garden) into Garden without a
+     * Puts files this app already has (APK assets, or an older private copy from before the Model Library) into it without a
      * download. [source] returns a fresh stream for a file, or null to skip it. Hashes are checked.
      */
     @WorkerThread
@@ -188,8 +189,8 @@ class Garden(
                 val id = m.id
                 val pfd = ownedAs(f)?.let { openBlobOrNull(handle(f, it)) }
                     ?: (if (privateReady(f)) ParcelFileDescriptor.open(File(dir, f.sha256), ParcelFileDescriptor.MODE_READ_ONLY) else null)
-                    ?: throw GardenException.NotReady(id, "${f.name} isn't on this phone")
-                if (pfd.statSize != f.size) { pfd.close(); throw GardenException.NotReady(id, "${f.name} has the wrong size") }
+                    ?: throw ModelLibraryException.NotReady(id, "${f.name} isn't on this phone")
+                if (pfd.statSize != f.size) { pfd.close(); throw ModelLibraryException.NotReady(id, "${f.name} has the wrong size") }
                 fds[Handles.assetPath(m, f)] = pfd
             }
             return OpenModel(models, BlobAssets.assetManager(app, fds), fds.values.toList())
@@ -244,7 +245,7 @@ class Garden(
         val done = CountDownLatch(1); var code = -1
         val ex = Executors.newSingleThreadExecutor()
         try { s.commit(ex) { code = it; done.countDown() }; done.await() } finally { ex.shutdown() }
-        if (code != 0) throw GardenException.Checksum(f.name)
+        if (code != 0) throw ModelLibraryException.Checksum(f.name)
         prefs.edit().putBoolean(committedKey(f, n), true).apply()
     }
 
@@ -261,7 +262,7 @@ class Garden(
                     prefs.edit().putLong(writtenKey(f), n).apply()
                 }
             }
-            try { commit(f, n, s) } catch (e: GardenException.Checksum) { abandon(f, sid); throw e }
+            try { commit(f, n, s) } catch (e: ModelLibraryException.Checksum) { abandon(f, sid); throw e }
         }
         prefs.edit().remove(sessionKey(f)).remove(writtenKey(f)).apply()
         lease(f, n)
@@ -304,7 +305,7 @@ class Garden(
             java.io.RandomAccessFile(part, "rw").use { it.setLength(offset) }
             java.io.FileOutputStream(part, true)
         }
-        if (sha256(FileInputStream(part)) != f.sha256) { part.delete(); throw GardenException.Checksum(f.name) }
+        if (sha256(FileInputStream(part)) != f.sha256) { part.delete(); throw ModelLibraryException.Checksum(f.name) }
         check(part.renameTo(File(dir, f.sha256))) { "couldn't save ${f.name}" }
     }
 
@@ -312,7 +313,7 @@ class Garden(
         val part = File(dir, f.sha256 + ".part")
         val md = MessageDigest.getInstance("SHA-256")
         java.io.FileOutputStream(part).use { out -> copy(input, out, md) }
-        if (hex(md.digest()) != f.sha256 || part.length() != f.size) { part.delete(); throw GardenException.Checksum(f.name) }
+        if (hex(md.digest()) != f.sha256 || part.length() != f.size) { part.delete(); throw ModelLibraryException.Checksum(f.name) }
         check(part.renameTo(File(dir, f.sha256))) { "couldn't save ${f.name}" }
     }
 
@@ -322,7 +323,7 @@ class Garden(
     private fun writtenKey(f: ModelFile) = "written:" + primary(f).tag + ":" + f.sha256
 
     internal companion object {
-        const val TAG = "Garden"
+        const val TAG = "ModelLibrary"
 
         fun copy(input: InputStream, out: OutputStream, md: MessageDigest? = null) {
             val buf = ByteArray(1 shl 20)

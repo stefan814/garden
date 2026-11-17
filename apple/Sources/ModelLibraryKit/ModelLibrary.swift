@@ -7,7 +7,7 @@ public enum Tier: Sendable, Equatable { case shared, `private` }
 public enum ModelState: Sendable, Equatable {
     /// Every file is on this device and this app holds it. Just open it.
     case ready(Tier)
-    /// Another app of ours already downloaded it into the shared store. [Garden.adopt] uses it with no network.
+    /// Another app of ours already downloaded it into the shared store. [ModelLibrary.adopt] uses it with no network.
     case sharedAvailable
     /// Something has to be downloaded: [bytes] still to fetch, [partial] of them already fetched and resumable.
     case missing(bytes: Int64, partial: Int64)
@@ -19,7 +19,7 @@ public struct OpenModel: Sendable {
     public let tier: Tier
     let urls: [String: URL]
     public func url(_ fileName: String) throws -> URL {
-        guard let u = urls[fileName] else { throw GardenError.unknownFile(model.id, fileName) }
+        guard let u = urls[fileName] else { throw ModelLibraryError.unknownFile(model.id, fileName) }
         return u
     }
 }
@@ -30,14 +30,14 @@ public struct OpenModel: Sendable {
  - **Shared store**: an App Group container that all our apps list in their entitlements (same team only).
    Files sit at `Garden/blobs/<sha256>`. Each app that uses a file leaves a marker at
    `Garden/users/<sha256>/<appID>`. A file is deleted when the last marker goes. Pass `sharedContainer: nil`
-   when the app has no App Group: Garden then works with only the private store.
+   when the app has no App Group: the Model Library then works with only the private store.
  - **Private store**: the app's own Application Support. Used when there's no shared store or the user says
    "keep it in this app".
  - Nothing is ever handed to an engine unless every file is present at its catalog size.
 
  All calls do file I/O: call them off the main thread.
  */
-public final class Garden: Sendable {
+public final class ModelLibrary: Sendable {
     public let catalog: Catalog
     public let appID: String
     let shared: URL?
@@ -57,6 +57,7 @@ public final class Garden: Sendable {
         precondition(appID.wholeMatch(of: /[A-Za-z0-9._\-]{1,128}/) != nil, "appID must be a plain name like a bundle id")
         self.appID = appID
         self.catalog = catalog
+        // "Garden": the library's old name, kept on purpose. Phones and apps on older versions use these folders.
         self.shared = sharedContainer?.appendingPathComponent("Garden", isDirectory: true)
         self.priv = try privateDirectory ?? FileManager.default
             .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
@@ -96,12 +97,12 @@ public final class Garden: Sendable {
         return .missing(bytes: missing, partial: partial)
     }
 
-    /// Opens the model for an engine. Throws [GardenError.notReady] rather than hand over a missing or short file.
+    /// Opens the model for an engine. Throws [ModelLibraryError.notReady] rather than hand over a missing or short file.
     public func open(_ id: String) throws -> OpenModel {
         let m = try catalog.model(id)
         var urls = [String: URL](), tiers = [Tier]()
         for f in m.files {
-            guard let t = held(f) else { throw GardenError.notReady(id, "\(f.name) isn't on this device") }
+            guard let t = held(f) else { throw ModelLibraryError.notReady(id, "\(f.name) isn't on this device") }
             urls[f.name] = t == .private ? privateURL(f) : sharedURL(f)!
             tiers.append(t)
         }
@@ -115,7 +116,7 @@ public final class Garden: Sendable {
         let m = try catalog.model(id)
         try withSharedLock {
             for f in m.files where held(f) == nil {
-                guard sharedPresent(f) else { throw GardenError.notReady(id, "\(f.name) isn't in the shared store") }
+                guard sharedPresent(f) else { throw ModelLibraryError.notReady(id, "\(f.name) isn't in the shared store") }
                 try mark(f)
             }
         }
@@ -146,14 +147,14 @@ public final class Garden: Sendable {
         onProgress(total, total)
     }
 
-    /// Moves files this app already has (e.g. bundled in the app, or an old private copy) into Garden without a
+    /// Moves files this app already has (e.g. bundled in the app, or an old private copy) into the Model Library without a
     /// download. [source] returns a file URL for a catalog file, or nil. Every file is SHA-checked; files are copied.
     public func contribute(_ id: String, share: Bool = true, source: (ModelFile) -> URL?) throws {
         let m = try catalog.model(id)
         for f in m.files where held(f) == nil {
             if sharedPresent(f) { try withSharedLock { try mark(f) }; continue }
             guard let src = source(f) else { continue }
-            guard Self.size(src) == f.size, try Self.sha256(src) == f.sha256 else { throw GardenError.checksum(f.name) }
+            guard Self.size(src) == f.size, try Self.sha256(src) == f.sha256 else { throw ModelLibraryError.checksum(f.name) }
             let tmp = partialURL(f).appendingPathExtension("in")
             try? FileManager.default.removeItem(at: tmp)
             try FileManager.default.copyItem(at: src, to: tmp)

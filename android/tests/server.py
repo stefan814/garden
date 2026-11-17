@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test server for Garden downloads. Serves files from argv[1] at /<mode>/<name>; modes:
+"""Test server for Model Library downloads. Serves files from argv[1] at /<mode>/<name>; modes:
   ok          normal, honours Range
   cut         first request per path stops after half the bytes; later ones are normal
   cutnorange  first request cut at half; later ones IGNORE Range (send 200 + everything)

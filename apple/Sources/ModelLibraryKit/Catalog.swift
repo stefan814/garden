@@ -36,12 +36,12 @@ public struct Model: Codable, Sendable, Hashable {
 
     public var bytes: Int64 { files.reduce(0) { $0 + $1.size } }
     public func file(_ name: String) throws -> ModelFile {
-        guard let f = files.first(where: { $0.name == name }) else { throw GardenError.unknownFile(id, name) }
+        guard let f = files.first(where: { $0.name == name }) else { throw ModelLibraryError.unknownFile(id, name) }
         return f
     }
 }
 
-/// The models one app uses. Each app brings its own (any model, from anywhere): Garden shares a file with every other
+/// The models one app uses. Each app brings its own (any model, from anywhere): the Model Library shares a file with every other
 /// app that lists the same bytes (same SHA-256), whatever either app calls it. Build one in code or with [parse].
 public struct Catalog: Sendable {
     /// The JSON layout version ("format"; older files call it "scheme"). Only 1 exists.
@@ -56,7 +56,7 @@ public struct Catalog: Sendable {
     }
 
     public func model(_ id: String) throws -> Model {
-        guard let m = models.first(where: { $0.id == id }) else { throw GardenError.unknownModel(id) }
+        guard let m = models.first(where: { $0.id == id }) else { throw ModelLibraryError.unknownModel(id) }
         return m
     }
 
@@ -65,7 +65,7 @@ public struct Catalog: Sendable {
     /// A catalog JSON file in this app's bundle.
     public static func bundled(_ name: String, in bundle: Bundle = .main) throws -> Catalog {
         guard let url = bundle.url(forResource: name, withExtension: "json") else {
-            throw GardenError.badCatalog("\(name).json isn't in the app's bundle")
+            throw ModelLibraryError.badCatalog("\(name).json isn't in the app's bundle")
         }
         return try parse(Data(contentsOf: url))
     }
@@ -75,14 +75,14 @@ public struct Catalog: Sendable {
     public static func parse(_ data: Data, allowSameFile: Bool = false) throws -> Catalog {
         struct Root: Decodable { let format: Int?; let scheme: Int?; let models: [Model] }
         let root: Root
-        do { root = try JSONDecoder().decode(Root.self, from: data) } catch { throw GardenError.badCatalog("\(error)") }
+        do { root = try JSONDecoder().decode(Root.self, from: data) } catch { throw ModelLibraryError.badCatalog("\(error)") }
         let f = root.format ?? root.scheme ?? format
-        guard f == format else { throw GardenError.badCatalog("format \(f), GardenKit knows \(format)") }
+        guard f == format else { throw ModelLibraryError.badCatalog("format \(f), ModelLibraryKit knows \(format)") }
         return try Catalog(models: root.models, allowSameFile: allowSameFile)
     }
 
     private static func validate(_ models: [Model], allowSameFile: Bool) throws {
-        func check(_ ok: Bool, _ why: @autoclosure () -> String) throws { if !ok { throw GardenError.badCatalog(why()) } }
+        func check(_ ok: Bool, _ why: @autoclosure () -> String) throws { if !ok { throw ModelLibraryError.badCatalog(why()) } }
         let id = /[a-z0-9][a-z0-9.\-]{0,47}/, name = /[A-Za-z0-9][A-Za-z0-9._\-]{0,47}/, sha = /[0-9a-f]{64}/
         var ids = Set<String>(), hashes = [String: String]()
         for m in models {
@@ -104,7 +104,7 @@ public struct Catalog: Sendable {
     }
 }
 
-public enum GardenError: Error, LocalizedError, Equatable {
+public enum ModelLibraryError: Error, LocalizedError, Equatable {
     case unknownModel(String)
     case unknownFile(String, String)
     case badCatalog(String)
@@ -115,9 +115,9 @@ public enum GardenError: Error, LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .unknownModel(let id): "No model '\(id)' in this app's Garden catalog"
+        case .unknownModel(let id): "No model '\(id)' in this app's model list"
         case .unknownFile(let id, let f): "\(id) has no file \(f)"
-        case .badCatalog(let why): "Bad Garden catalog: \(why)"
+        case .badCatalog(let why): "Bad model list: \(why)"
         case .notReady(let id, let why): "Model '\(id)' isn't ready: \(why)"
         case .checksum(let f): "\(f) didn't match its SHA-256; it will be downloaded again"
         case .download(let f, let why): "Couldn't download \(f): \(why)"

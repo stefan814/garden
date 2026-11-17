@@ -1,29 +1,29 @@
-# Garden — shared on-device models for Skald, Earshot and future apps
+# Model Library — shared on-device models for Skald, Earshot and future apps
 
 Status (2026-11-16): two libraries, both working, for any model each app lists.
 - **Android** (`android/`): 51 end-to-end checks pass on the emulator (40 also passed on a Pixel 10a before
   2026-11-16); every model in the harness's real list downloads and loads.
-- **iPhone** (`apple/`, GardenKit): 13 tests pass on macOS; 22 two-app checks pass in the iOS Simulator. Not run on a
+- **iPhone** (`apple/`, ModelLibraryKit): 13 tests pass on macOS; 22 two-app checks pass in the iOS Simulator. Not run on a
   real iPhone yet.
 
-This repo holds Garden only. Each app (Skald, Earshot, …) adds Garden in its own repo; nothing app-specific lives
+This repo holds the Model Library only. Each app (Skald, Earshot, …) adds the Model Library in its own repo; nothing app-specific lives
 here.
 
 ## Goal
 
-Garden shares models the phone doesn't have built in (Parakeet, Silero VAD, TitaNet, pyannote, …), so each is stored
-once per phone however many of our apps use it. For a model in the catalog, Garden answers in this order:
+the Model Library shares models the phone doesn't have built in (Parakeet, Silero VAD, TitaNet, pyannote, …), so each is stored
+once per phone however many of our apps use it. For a model in the catalog, the Model Library answers in this order:
 
 1. **Shared** — another of our apps already put the exact file on the phone.
 2. **Download** — the app fetches it, then contributes it to the shared store for the next app.
 
 **Out of scope (decided 2026-11-14): models built into the phone** (Apple speech, Apple Intelligence / Foundation
-Models, Gemini Nano, ML Kit). The OS already shares them, so each app calls them directly. Garden hands out readable
+Models, Gemini Nano, ML Kit). The OS already shares them, so each app calls them directly. The Model Library hands out readable
 files only; engines (sherpa-onnx, LiteRT-LM, CoreML) stay in each app.
 
 ## What exists already (research, 2026-11-14)
 
-- No ready-made cross-app model garden. Closest: [fgna/android-llm-service](https://github.com/fgna/android-llm-service)
+- No ready-made cross-app model library. Closest: [fgna/android-llm-service](https://github.com/fgna/android-llm-service)
   (LLM-only AIDL service, 0 stars, Android only).
 - **Android has the shared store built in:** `BlobStoreManager` (API 30+), meant for "machine learning" data, keyed by SHA-256.
 - **iOS has no cross-developer sharing.** App Groups only work between apps on the same team ID.
@@ -47,7 +47,7 @@ changes timings).
 
 ## Versions and compatibility (2026-11-16)
 
-Apps pin Garden (a git submodule at a tag) instead of building whatever is checked out beside them, so a Garden
+Apps pin the Model Library (a git submodule at a tag) instead of building whatever is checked out beside them, so a Model Library
 change never forces an app change or release. That only works if versions can coexist on one phone:
 
 - **On-device format: append-only, forever.** Never rename or re-key what a published version wrote: Android handles
@@ -56,10 +56,10 @@ change never forces an app change or release. That only works if versions can co
   co-commit the old one.
 - **API: semantic versioning.** Tags `vMAJOR.MINOR.PATCH`; breaking calls only in a major version. v1.0.0 is the
   model-agnostic API (app-supplied catalogs).
-- **Tested:** `android/tests/compat.sh <serial> [old ref]` builds the harness at an older Garden (default 608f565, the
+- **Tested:** `android/tests/compat.sh <serial> [old ref]` builds the harness at an older Model Library (default 608f565, the
   last one with a bundled list, which Skald pins) and at HEAD, and checks both directions on one phone: share, see,
   adopt with no network, transcribe, let go, one copy (11 checks, emulator, 2026-11-16). On iPhone the format
-  is files by hash, unchanged since GardenKit was built.
+  is files by hash, unchanged since ModelLibraryKit was built.
 
 ## Android design
 
@@ -68,10 +68,10 @@ change never forces an app change or release. That only works if versions can co
 - **Handle identity is sha256 + label + tag + expiry.** If one character differs, you get a silent duplicate. Since
   2026-11-16 each app brings its own model list, so a handle depends on the file's bytes alone:
   - **Scheme 2** (any file): label `Garden shared model file`, tag `garden/v2/<sha256>`, expiry 0.
-  - **Scheme 1** (the 21 files Garden's own catalog listed before then): label `Garden model <id> (<file>)`, tag
+  - **Scheme 1** (the 21 files the Model Library's own catalog listed before then): label `Garden model <id> (<file>)`, tag
     `garden/v1/<id>/<file>`, from the id and name that catalog gave them, kept in the frozen table
-    `android/garden/src/main/assets/garden-v1-handles.json` (keyed by hash; a unit test pins its SHA-256). Phones
-    already hold these, and apps on older Garden versions look for them there, so they never move: no copying, and
+    `android/modellibrary/src/main/assets/garden-v1-handles.json` (keyed by hash; a unit test pins its SHA-256). Phones
+    already hold these, and apps on older Model Library versions look for them there, so they never move: no copying, and
     old and new apps keep sharing one copy.
   - Private copies (`files/garden/v1`) and the `garden.v1` preferences keep their names; their keys use the handle's tag.
 - **Access: `allowPublicAccess()`.** These are public, SHA-pinned upstream models. Skald and Earshot use different signing
@@ -132,23 +132,23 @@ Rules this sets for the library:
   cold first run as well.
 - **Google's own apps use BlobStore on this phone** (Google app, Android System Intelligence, Wallet: 35 blobs), so it's a
   well-used production mechanism.
-- Cleanup: test apps uninstalled after releasing leases, and 0 `garden` blobs remain.
+- Cleanup: test apps uninstalled after releasing leases, and 0 `library` blobs remain.
 
-### Library shape (`garden-android`, plain Kotlin/Android library)
+### Library shape (`library-android`, plain Kotlin/Android library)
 
 ```kotlin
 sealed interface Resolution {      // early sketch; the built library's API is in android/README.md
   data class Shared(val assets: AssetManager, val paths: Map<String, String>) : Resolution // blob fds served as assets (spike-proven), already leased
   data class Download(val files: List<CatalogFile>, val bytes: Long) : Resolution
 }
-Garden.resolve(capability: Capability, prefs: Prefs): Resolution
-Garden.contribute(file: CatalogFile, source: File)   // after an in-app download or from APK assets
-Garden.release(modelId)                               // app no longer needs it
+ModelLibrary.resolve(capability: Capability, prefs: Prefs): Resolution
+ModelLibrary.contribute(file: CatalogFile, source: File)   // after an in-app download or from APK assets
+ModelLibrary.release(modelId)                               // app no longer needs it
 ```
 
-- Brought in as a Gradle composite build (`includeBuild("../garden/android")`) or a submodule.
+- Brought in as a Gradle composite build (`includeBuild("../model-library/android")`) or a submodule.
 
-## iOS design (`GardenKit`, Swift package) — BUILT 2026-11-14
+## iOS design (`ModelLibraryKit`, Swift package) — BUILT 2026-11-14
 
 `Package.swift` at the repo root, sources in `apple/`. Each app passes its own model list, as on Android. Files were
 always stored by hash here, so nothing else changed.
@@ -175,13 +175,13 @@ always stored by hash here, so nothing else changed.
   - A `200` reply to a Range request restarts the file. A `206` must start at our offset.
   - Cancelling keeps the partial file.
   - Same API as Android: `state` / `adopt` / `download(share:)` / `contribute` / `remove` / `open`.
-- **Running a downloaded model is the app's job.** GardenKit hands out file URLs. An app that wants Parakeet on iPhone
+- **Running a downloaded model is the app's job.** ModelLibraryKit hands out file URLs. An app that wants Parakeet on iPhone
   brings its own engine: sherpa-onnx publishes a prebuilt iOS xcframework, v1.13.4, on its `xcframework` release tag.
 
 ## Earshot models — DECIDED 2026-11-14: one app, you choose
 
 **One Earshot build.** No Full/Lite split, and no speech models bundled in the APK. On first run (and in Settings), Earshot
-offers **Use the shared model** when Garden finds one, and **Download in Earshot** either way. Which one is up to you.
+offers **Use the shared model** when the Model Library finds one, and **Download in Earshot** either way. Which one is up to you.
 - Downloading needs the INTERNET permission. It's used only for that user-started, SHA-pinned model download. Nothing is
   uploaded, and the privacy note in the app must say exactly that.
 - If you choose neither, there's no transcription. Say so plainly.
@@ -190,46 +190,45 @@ offers **Use the shared model** when Garden finds one, and **Download in Earshot
 ## Deferred: cross-app text-model sharing
 
 No current app needs a big text model in two places (Earshot uses none). Revisit if a second app wants Gemma. The
-likely shape is a small companion "Garden" app that owns the file and hands out read-only descriptors through a
+likely shape is a small companion "the Model Library" app that owns the file and hands out read-only descriptors through a
 `ContentProvider`. The same fd/SELinux test applies.
 
 ## Build order
 
-1. ✅ `catalog/garden-catalog.json` (moved into the apps on 2026-11-16, see step 5): Parakeet 110M, Silero VAD, TitaNet-small, pyannote seg 3.0. Every hash matches what
+1. ✅ `catalog/library-catalog.json` (moved into the apps on 2026-11-16, see step 5): Parakeet 110M, Silero VAD, TitaNet-small, pyannote seg 3.0. Every hash matches what
    the apps pin today. Parakeet's per-file source is a third-party Hugging Face mirror (punitd, pinned commit), since
    k2-fsa only ships it as a tar.bz2. The SHA check guarantees the bytes, but not that the mirror stays up. Each file
    takes several `urls` (tested), so a self-hosted copy can be added as a second source.
-2. ✅ `garden-android` (`android/garden`), see `android/README.md`. API: `state` → `adopt` / `download(share)` /
+2. ✅ `library-android` (`android/modellibrary`), see `android/README.md`. API: `state` → `adopt` / `download(share)` /
    `contribute` → `open` (AssetManager + paths) → `remove`.
    - Handle scheme frozen: tag `garden/v1/<id>/<file>`, label `Garden model <id> (<file>)`, expiry 0, public access.
    - The library manifest declares no INTERNET permission.
    - Tests:
      - 7 JVM unit tests.
-     - **40 end-to-end checks** (`android/tests/e2e.sh`, two-package harness + fault-injecting server) covering:
+     - **51 end-to-end checks** (40 at first) (`android/tests/e2e.sh`, two-package harness + fault-injecting server) covering:
        cross-app adopt, a Service context, closing the OpenModel early, reinstall visibility, dropped-connection
        resume, a server that ignores Range, system and private SHA rejection, dead-mirror fallback, a paused download
        resumed in a later call, adopt-instead-of-download with zero network, a model **split** across shared and private
        storage (Ready, and it opens), and **no descriptor leak** over 30 open/load/close cycles (122 → 122 fds).
      - Every real catalog url downloaded and loaded (`tests/real-downloads.sh`; Parakeet 23 s on the emulator).
      - **Pixel 10a (API 37): all 40 checks pass** (test server via `adb reverse`, 141 → 141 fds), and every real url
-       downloads and loads over the phone's own connection (Parakeet 51 s). The phone was left clean: no test apps, no
-       Garden blobs, no reverse rule.
+       downloads and loads over the phone's own connection (Parakeet 51 s). The phone was left clean: no test apps, no Model Library blobs, no reverse rule.
    - **Found by the tests:** `BlobStoreManager.Session.getSize()` reports the whole preallocated length once
-     `openWrite()` is called, so it can't serve as a resume point. Garden keeps its own byte count.
+     `openWrite()` is called, so it can't serve as a resume point. The Model Library keeps its own byte count.
    - **Also found by review:** `state()` missed split models (fixed). Real catalogs may not list one file in two
      models, because private copies are stored by hash.
-3. ✅ `GardenKit` (`apple/`), see `apple/README.md`. Same catalog and the same API as Android. Two-app Simulator test:
+3. ✅ `ModelLibraryKit` (`apple/`), see `apple/README.md`. Same catalog and the same API as Android. Two-app Simulator test:
    `apple/harness/e2e.sh`.
-4. Adding Garden to each app happens in that app's repo, not here: Skald Android and iPhone, Earshot Android and
+4. Adding the Model Library to each app happens in that app's repo, not here: Skald Android and iPhone, Earshot Android and
    iPhone.
-5. ✅ **Model-agnostic (2026-11-16).** Garden no longer ships a model list: `Garden(context, catalog)` /
-   `Garden(appID:sharedContainer:catalog:)` take the app's own, and the old list moved into the apps (Earshot's
+5. ✅ **Model-agnostic (2026-11-16).** the Model Library no longer ships a model list: `ModelLibrary(context, catalog)` /
+   `ModelLibrary(appID:sharedContainer:catalog:)` take the app's own, and the old list moved into the apps (Earshot's
    `catalog/earshot-models.json`; the Android harness's `real-catalog.json`). Android handles are named by hash
    (scheme 2), with the frozen scheme-1 table for files already on phones. Tests: 9 JVM + 51 emulator checks (new: one
    app's own name for Parakeet's vocabulary finds the shared copy, and two apps calling a new file different things get
    one `garden/v2/<sha>` blob and no second download), 13 Swift tests + 22 Simulator checks. Upgrading Earshot in place
    on the emulator and Simulator kept Cantonese ready with no download, and it still transcribes. Skald stays on its
-   pinned Garden until its submodule is bumped. Its files keep their v1 handles (its leases on the emulator were
+   pinned the Model Library until its submodule is bumped. Its files keep their v1 handles (its leases on the emulator were
    unchanged), so it should keep sharing with Earshot; that pairing wasn't run after the change.
 5. Not done: a real-iPhone run, including whether a free personal team may use App Groups.
 

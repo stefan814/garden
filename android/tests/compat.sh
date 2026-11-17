@@ -1,8 +1,8 @@
 #!/bin/bash
-# Cross-version test: an app on an OLDER Garden and an app on this one share one copy on the same phone, both ways.
-# Apps pin Garden versions independently (Earshot and Skald each pin their own), so the on-device format must stay
+# Cross-version test: an app on an OLDER Model Library (or Garden, its old name) and an app on this one share one copy on the same phone, both ways.
+# Apps pin Model Library versions independently (Earshot and Skald each pin their own), so the on-device format must stay
 # compatible across every version. Builds the harness at <old ref> (in a temporary worktree) and at HEAD.
-# Usage: tests/compat.sh <adb serial> [old ref, default 608f565: the last Garden with a bundled model list]
+# Usage: tests/compat.sh <adb serial> [old ref, default 608f565: the last version with a bundled model list]
 set -u
 SERIAL=${1:?serial}; OLD=${2:-608f565}
 cd "$(dirname "$0")/.."

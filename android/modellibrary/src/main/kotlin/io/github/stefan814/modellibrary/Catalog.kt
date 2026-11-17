@@ -1,4 +1,4 @@
-package io.github.stefan814.garden
+package io.github.stefan814.modellibrary
 
 import android.content.Context
 import org.json.JSONObject
@@ -22,7 +22,7 @@ data class Model(
 }
 
 /**
- * The models one app uses. Each app brings its own (any model, from anywhere): Garden shares a file with every other
+ * The models one app uses. Each app brings its own (any model, from anywhere): the Model Library shares a file with every other
  * app that lists the same bytes (same SHA-256), whatever either app calls it. Build one in code or with [parse].
  *
  * [allowSameFile] is for tests only: within one app's list a file must not be in two models, or removing one model
@@ -31,7 +31,7 @@ data class Model(
 class Catalog(val models: List<Model>, allowSameFile: Boolean = false) {
     init { validate(models, allowSameFile) }
 
-    operator fun get(id: String): Model = models.firstOrNull { it.id == id } ?: throw GardenException.UnknownModel(id)
+    operator fun get(id: String): Model = models.firstOrNull { it.id == id } ?: throw ModelLibraryException.UnknownModel(id)
 
     fun forCapability(capability: String): List<Model> = models.filter { it.capability == capability }
 
@@ -94,10 +94,12 @@ class Catalog(val models: List<Model>, allowSameFile: Boolean = false) {
 /**
  * Naming for Android shared-store handles. A handle is sha256 + label + tag + expiry, and every app must build exactly
  * the same one for a file or Android keeps separate copies. So a handle depends on the file's bytes only:
+ * The names say "Garden", the library's old name, on purpose: they are each file's identity on phones, so renaming
+ * them would orphan every shared copy and stop sharing with apps on older versions.
  * - Scheme 2 (every file not in [legacy]): label [LABEL], tag "garden/v2/<sha256>".
- * - Scheme 1 (files Garden's own catalog listed before apps brought their own, kept in assets/[LEGACY_ASSET]):
+ * - Scheme 1 (files the library's own catalog listed (when it was called Garden) before apps brought their own, kept in assets/[LEGACY_ASSET]):
  *   label "Garden model <id> (<name>)", tag "garden/v1/<id>/<name>", from the id and name that catalog gave them.
- *   Phones already hold these, and apps on older Garden versions look for them there.
+ *   Phones already hold these, and apps on older versions look for them there.
  * Never change either: a different handle for a published file means a second copy on every phone.
  */
 class Handles internal constructor(
@@ -121,7 +123,7 @@ class Handles internal constructor(
         fun v2(sha256: String) = Name(LABEL, "garden/v2/$sha256")
 
         /** Where the file appears inside an [OpenModel]'s AssetManager (this app's own names). */
-        fun assetPath(m: Model, f: ModelFile) = "garden/${m.id}/${f.name}"
+        fun assetPath(m: Model, f: ModelFile) = "modellibrary/${m.id}/${f.name}"
 
         fun digest(sha256: String) = ByteArray(32) { sha256.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
 
@@ -140,10 +142,10 @@ class Handles internal constructor(
     }
 }
 
-sealed class GardenException(message: String, cause: Throwable? = null) : Exception(message, cause) {
-    class UnknownModel(id: String) : GardenException("No model '$id' in this app's Garden catalog")
+sealed class ModelLibraryException(message: String, cause: Throwable? = null) : Exception(message, cause) {
+    class UnknownModel(id: String) : ModelLibraryException("No model '$id' in this app's model list")
     /** The model isn't fully on the phone (or a shared copy vanished): never hand an engine a path it can't open. */
-    class NotReady(id: String, why: String) : GardenException("Model '$id' isn't ready: $why")
-    class Checksum(file: String) : GardenException("$file didn't match its SHA-256; it will be downloaded again")
-    class Download(file: String, cause: Throwable) : GardenException("Couldn't download $file: ${cause.message}", cause)
+    class NotReady(id: String, why: String) : ModelLibraryException("Model '$id' isn't ready: $why")
+    class Checksum(file: String) : ModelLibraryException("$file didn't match its SHA-256; it will be downloaded again")
+    class Download(file: String, cause: Throwable) : ModelLibraryException("Couldn't download $file: ${cause.message}", cause)
 }

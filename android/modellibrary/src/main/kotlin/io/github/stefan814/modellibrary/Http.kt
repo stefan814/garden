@@ -1,4 +1,4 @@
-package io.github.stefan814.garden
+package io.github.stefan814.modellibrary
 
 import android.util.Log
 import java.io.IOException
@@ -33,8 +33,8 @@ internal class Http(private val retryDelayMs: Long = 2_000, private val attempts
                 if (once(f, url, have(), isCancelled, onBytes, open)) return
                 throw IOException("connection closed early")
             } catch (e: IOException) {
-                if (++attempt >= attempts) throw GardenException.Download(f.name, e)
-                Log.w(Garden.TAG, "${f.name}: ${e.message}; retry $attempt from ${have()} bytes")
+                if (++attempt >= attempts) throw ModelLibraryException.Download(f.name, e)
+                Log.w(ModelLibrary.TAG, "${f.name}: ${e.message}; retry $attempt from ${have()} bytes")
                 Thread.sleep(retryDelayMs * (1L shl (attempt - 1).coerceAtMost(5)))
             }
         }
@@ -49,7 +49,7 @@ internal class Http(private val retryDelayMs: Long = 2_000, private val attempts
         if (have == f.size) { onBytes(have); return true }
         val c = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 20_000; readTimeout = 30_000; instanceFollowRedirects = true
-            setRequestProperty("User-Agent", "Garden-Android")
+            setRequestProperty("User-Agent", "ModelLibrary-Android")
             if (have > 0) setRequestProperty("Range", "bytes=$have-")
         }
         try {

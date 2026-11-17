@@ -1,20 +1,20 @@
 // swift-tools-version: 6.0
-// GardenKit: the Apple side of Garden (shared on-device models). The Android library lives in android/.
+// ModelLibraryKit: the iPhone and Mac side of the Model Library (shared on-device models). The Android library lives in android/.
 import PackageDescription
 
 let package = Package(
-    name: "Garden",
+    name: "ModelLibrary",
     platforms: [.iOS(.v17), .macOS(.v14)],
-    products: [.library(name: "GardenKit", targets: ["GardenKit"])],
+    products: [.library(name: "ModelLibraryKit", targets: ["ModelLibraryKit"])],
     targets: [
         .target(
-            name: "GardenKit",
-            path: "apple/Sources/GardenKit"
+            name: "ModelLibraryKit",
+            path: "apple/Sources/ModelLibraryKit"
         ),
         .testTarget(
-            name: "GardenKitTests",
-            dependencies: ["GardenKit"],
-            path: "apple/Tests/GardenKitTests"
+            name: "ModelLibraryKitTests",
+            dependencies: ["ModelLibraryKit"],
+            path: "apple/Tests/ModelLibraryKitTests"
         ),
     ]
 )

@@ -1,5 +1,5 @@
 #!/bin/bash
-# End-to-end test of the Garden library on a device/emulator, using the harness installed as two apps (a, b).
+# End-to-end test of the Model Library on a device/emulator, using the harness installed as two apps (a, b).
 # Usage: tests/e2e.sh <adb serial>      (emulator only for the download tests: they use the host server at 10.0.2.2)
 # Starts tests/server.py on :8765 itself. Exits non-zero on the first failed check.
 set -u
@@ -31,7 +31,7 @@ expect() {  # expect <description> <regex>
 }
 served() { grep -c "^$1 $2" $LOG; }   # served <mode> <name> -> request count
 
-echo "### setup: fresh installs, no Garden blobs"
+echo "### setup: fresh installs, no shared model files"
 $ADB uninstall $P.a >/dev/null 2>&1; $ADB uninstall $P.b >/dev/null 2>&1
 $ADB install -t harness/build/outputs/apk/a/debug/harness-a-debug.apk >/dev/null
 $ADB install -t harness/build/outputs/apk/b/debug/harness-b-debug.apk >/dev/null
@@ -59,7 +59,7 @@ step b state t-alias $T;                           expect "22 b already holds Pa
 step a state t-alias $T;                           expect "22 a (which let go) finds it by its own name" "STATE t-alias = SharedAvailable"
 step a adopt t-alias $T;                           expect "22 and adopts it" "STATE t-alias = Ready\(SHARED\)"
 OUT=$($ADB shell dumpsys blob_store | grep -c "garden/v1/parakeet-tdt-110m-en-int8/tokens.txt");  expect "22 one copy on the phone" "^1$"
-step a download t-v2a $T;                          expect "23 a downloads a file no older Garden knew" "STATE t-v2a = Ready\(SHARED\)"
+step a download t-v2a $T;                          expect "23 a downloads a file no older version knew" "STATE t-v2a = Ready\(SHARED\)"
 BEFORE=$(served ok alias.bin)
 step b state t-v2b $T;                             expect "23 b, calling it something else, sees it" "STATE t-v2b = SharedAvailable"
 step b adopt t-v2b $T;                             expect "23 and adopts it" "STATE t-v2b = Ready\(SHARED\)"
