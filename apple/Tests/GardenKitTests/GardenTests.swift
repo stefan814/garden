@@ -73,13 +73,18 @@ func garden(_ app: String, shared: URL?, _ c: Catalog) throws -> Garden {
 }
 
 @Suite struct CatalogTests {
-    @Test func bundledCatalogIsTheRepoCatalog() throws {
-        let root = try Data(contentsOf: repo.appendingPathComponent("catalog/garden-catalog.json"))
-        let bundled = try Data(contentsOf: try Catalog.bundledURL())
-        #expect(root == bundled, "apple/Sources/GardenKit/garden-catalog.json must be a copy of catalog/garden-catalog.json")
-        let c = try Catalog.bundled()
-        #expect(c.models.map(\.id).contains("parakeet-tdt-110m-en-int8"))
-        #expect(try c.model("parakeet-tdt-110m-en-int8").files.count == 4)
+    @Test func appsBringTheirOwnCatalog() throws {
+        let sha = String(repeating: "c", count: 64)
+        let bare = #"{"models":[{"id":"m","files":[{"name":"a.bin","size":1,"sha256":"\#(sha)","urls":["https://x/a"]}]}]}"#
+        let c = try Catalog.parse(Data(bare.utf8))
+        #expect(try c.model("m").title == "m", "title defaults to the id")
+        #expect(try c.model("m").capability == "")
+        #expect(try Catalog.parse(Data(bare.replacingOccurrences(of: "{\"models\"", with: "{\"format\":1,\"models\"").utf8)).models.count == 1)
+        #expect(throws: GardenError.self) { try Catalog.parse(Data(bare.replacingOccurrences(of: "{\"models\"", with: "{\"format\":2,\"models\"").utf8)) }
+        let built = try Catalog(models: [Model(id: "x", files: [ModelFile(name: "f.bin", size: 2, sha256: sha, urls: [URL(string: "https://x/f")!])])])
+        #expect(try built.model("x").bytes == 2)
+        #expect(throws: GardenError.self) { try Catalog(models: [Model(id: "Bad Id", files: [])]) }
+        #expect(throws: GardenError.self) { try Catalog.bundled("no-such-catalog") }
     }
 
     @Test func rejectsBadCatalogs() {
@@ -136,6 +141,22 @@ func garden(_ app: String, shared: URL?, _ c: Catalog) throws -> Garden {
         try b.remove("m")
         #expect(try b.state("m") == .missing(bytes: Int64(size), partial: 0))
         #expect(try FileManager.default.contentsOfDirectory(atPath: group.appendingPathComponent("Garden/blobs").path).isEmpty)
+    }
+
+    @Test func appsShareByHashWhateverTheyCallIt() async throws {
+        let (n, size, sha) = try s.file("alias.bin", size: 120_000)
+        let group = try tempDir("group")
+        let a = try garden("app.a", shared: group, try catalog([("speech", n, size, sha, [s.url("ok", n)])]))
+        let b = try garden("app.b", shared: group, try catalog([("asr-model", "weights.onnx", size, sha, [s.url("ok", n)])]))
+        try await a.download("speech")
+        #expect(try b.state("asr-model") == .sharedAvailable)
+        let before = s.requests(n).count
+        try await b.download("asr-model")
+        #expect(s.requests(n).count == before, "b adopts a's copy instead of downloading")
+        #expect(try b.state("asr-model") == .ready(.shared))
+        #expect(try Garden.sha256(b.open("asr-model").url("weights.onnx")) == sha)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: group.appendingPathComponent("Garden/blobs").path).count == 1)
+        try a.remove("speech"); try b.remove("asr-model")
     }
 
     @Test func privateDownloadStaysInTheApp() async throws {

@@ -5,57 +5,74 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.security.MessageDigest
 
 class CatalogTest {
-    private val json = File("../../catalog/garden-catalog.json").readText()
-    private val catalog = Catalog.parse(json)
+    private val legacyFile = File("src/main/assets/${Handles.LEGACY_ASSET}")
+    private val handles = Handles.parseLegacy(legacyFile.readText())
+    private val vad = "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6"
+    private val json = """{"models": [
+        {"id": "my-vad", "files": [{"name": "detector.onnx", "size": 643854, "sha256": "$vad", "urls": ["https://example.com/v"]}]},
+        {"id": "other", "title": "Other", "capability": "x", "license": "MIT",
+         "files": [{"name": "a.bin", "size": 5, "sha256": "${"ab".repeat(32)}", "urls": ["https://example.com/a"]}]}
+    ]}"""
 
-    @Test fun `bundled catalog parses and validates`() {
-        assertEquals(Handles.SCHEME, catalog.scheme)
-        assertEquals(listOf("parakeet-tdt-110m-en-int8", "silero-vad-v5", "titanet-small-en", "pyannote-seg-3.0"), catalog.models.map { it.id })
+    /** Phones hold these blobs and older apps look for them under exactly these names: the table must never change. */
+    @Test fun `v1 handle table is frozen`() {
+        val sha = MessageDigest.getInstance("SHA-256").digest(legacyFile.readBytes()).joinToString("") { "%02x".format(it) }
+        assertEquals("96feede8f0b14b2e3b2e5674c213b0ffdae7270de852f7be0b6e30e68a5e6611", sha)
     }
 
-    /** These are the exact files Earshot and Skald pin today; if they drift, sharing silently stops working. */
-    @Test fun `hashes match what the apps already pin`() {
-        assertEquals("0f35509ddeb9b39002fb077d979a9fe74f06eb0bc4dd5c34f512f82e5111d657", catalog["parakeet-tdt-110m-en-int8"].file("encoder.int8.onnx").sha256)
-        assertEquals("9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6", catalog["silero-vad-v5"].file("vad.onnx").sha256)
-        assertEquals("ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e", catalog["titanet-small-en"].file("embed.onnx").sha256)
-        assertEquals("220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079", catalog["pyannote-seg-3.0"].file("model.onnx").sha256)
-        assertEquals(136_490_421L, catalog["parakeet-tdt-110m-en-int8"].bytes)
+    @Test fun `files Garden listed before keep their v1 names, whatever the app calls them`() {
+        assertEquals(listOf(Handles.Name("Garden model silero-vad-v5 (vad.onnx)", "garden/v1/silero-vad-v5/vad.onnx")), handles.names(vad))
+        val m = Catalog.parse(json)["my-vad"]
+        assertEquals("garden/v1/silero-vad-v5/vad.onnx", handles.names(m.files[0].sha256).first().tag)
+        assertEquals("garden/my-vad/detector.onnx", Handles.assetPath(m, m.files[0]))
     }
 
-    /** Frozen: changing these for a published file creates a duplicate blob on every phone. */
-    @Test fun `handle naming is frozen`() {
-        val m = catalog["silero-vad-v5"]; val f = m.file("vad.onnx")
-        assertEquals("garden/v1/silero-vad-v5/vad.onnx", Handles.tag(m, f))
-        assertEquals("Garden model silero-vad-v5 (vad.onnx)", Handles.label(m, f))
-        assertEquals("garden/silero-vad-v5/vad.onnx", Handles.assetPath(m, f))
+    @Test fun `any other file is named by its hash alone`() {
+        val sha = "ab".repeat(32)
+        assertEquals(listOf(Handles.Name("Garden shared model file", "garden/v2/$sha")), handles.names(sha))
     }
 
-    @Test fun `every handle fits the system limits`() {
-        for (m in catalog.models) for (f in m.files) {
-            assertTrue(Handles.label(m, f).length <= Handles.MAX_LABEL)
-            assertTrue(Handles.tag(m, f).length <= Handles.MAX_TAG)
-        }
+    @Test fun `every name fits the system limits`() {
+        for (sha in listOf(vad, "ab".repeat(32)) + Regex("\"([0-9a-f]{64})\"").findAll(legacyFile.readText()).map { it.groupValues[1] })
+            for (n in handles.names(sha)) {
+                assertTrue(n.label, n.label.length <= Handles.MAX_LABEL)
+                assertTrue(n.tag, n.tag.length <= Handles.MAX_TAG)
+            }
     }
 
-    @Test fun `digest round trips`() {
-        val sha = catalog["silero-vad-v5"].files[0].sha256
-        assertEquals(sha, Garden.hex(Handles.digest(sha)))
+    @Test fun `parses with or without a format, metadata optional`() {
+        val c = Catalog.parse(json)
+        assertEquals(listOf("my-vad", "other"), c.models.map { it.id })
+        assertEquals("my-vad", c["my-vad"].title)
+        assertEquals("Other", c["other"].title)
+        assertEquals(listOf("other"), c.forCapability("x").map { it.id })
+        assertEquals(2, Catalog.parse(json.replaceFirst("{", "{\"format\": 1, ")).models.size)
+        assertEquals(2, Catalog.parse(json.replaceFirst("{", "{\"scheme\": 1, ")).models.size)
     }
+
+    @Test fun `built in code`() {
+        val c = Catalog(listOf(Model("x", listOf(ModelFile("f.bin", 1, "cd".repeat(32), listOf("https://e.com/f"))))))
+        assertEquals(1L, c["x"].bytes)
+        assertTrue(runCatching { Catalog(listOf(Model("x", emptyList()))) }.isFailure)
+    }
+
+    @Test fun `digest round trips`() = assertEquals(vad, Garden.hex(Handles.digest(vad)))
 
     @Test fun `rejects bad entries`() {
         fun bad(edit: (String) -> String) = runCatching { Catalog.parse(edit(json)) }.isFailure
+        assertFalse("the sample is good", bad { it })
         assertTrue("uppercase sha", bad { it.replace("9e2449e1", "9E2449E1") })
-        assertTrue("duplicate id", bad { it.replace("\"titanet-small-en\"", "\"silero-vad-v5\"") })
-        assertTrue("unknown scheme", bad { it.replace("\"scheme\": 1", "\"scheme\": 2") })
-        assertTrue("bad id", bad { it.replace("\"silero-vad-v5\"", "\"Silero VAD\"") })
-        assertTrue("id over 48 chars", bad { it.replace("\"pyannote-seg-3.0\"", "\"" + "p".repeat(49) + "\"") })
-        assertTrue("long id + long file name blows the 100-char label limit", bad {
-            it.replace("\"pyannote-seg-3.0\"", "\"" + "p".repeat(48) + "\"").replace("\"model.onnx\"", "\"" + "m".repeat(43) + ".onnx\"")
-        })
-        assertTrue("same file in two models", bad { it.replace("ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e", "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6") })
-        assertTrue("unknown model lookup", runCatching { catalog["nope"] }.isFailure)
+        assertTrue("duplicate id", bad { it.replace("\"other\"", "\"my-vad\"") })
+        assertTrue("unknown format", bad { it.replaceFirst("{", "{\"format\": 2, ") })
+        assertTrue("bad id", bad { it.replace("\"my-vad\"", "\"My VAD\"") })
+        assertTrue("id over 48 chars", bad { it.replace("\"other\"", "\"" + "p".repeat(49) + "\"") })
+        assertTrue("same file in two models", bad { it.replace("ab".repeat(32), vad) })
+        assertFalse("...unless allowed (tests)", runCatching { Catalog.parse(json.replace("ab".repeat(32), vad), allowSameFile = true) }.isFailure)
+        assertTrue("bad url", bad { it.replace("https://example.com/a", "ftp://x") })
+        assertTrue("unknown model lookup", runCatching { Catalog.parse(json)["nope"] }.isFailure)
     }
 
     @Test fun `quota rule`() {

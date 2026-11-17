@@ -29,8 +29,9 @@ sealed interface ModelState {
 }
 
 /**
- * Shared on-device models for Skald, Earshot and future apps.
+ * Shared on-device models for Skald, Earshot and future apps: any model, from the app's own [catalog].
  *
+ * A file is shared with every app that lists the same bytes (same SHA-256), whatever the apps call the model or file.
  * Only for models the phone doesn't have built in (Gemini Nano and other system models are the app's business).
  * Order an app should follow: [state] (Ready / SharedAvailable / Missing) → [adopt] or [download] → [open].
  * Blocking calls are marked @WorkerThread. Shared files sit in Android's BlobStoreManager, keyed by SHA-256, readable
@@ -39,7 +40,8 @@ sealed interface ModelState {
  */
 class Garden(
     context: Context,
-    val catalog: Catalog = Catalog.bundled(context),
+    /** This app's models (e.g. [Catalog.fromAsset]). */
+    val catalog: Catalog,
     /** Shown in Settings next to each shared file this app keeps. */
     private val leaseDescription: String = "Used by ${context.applicationInfo.loadLabel(context.packageManager)}",
     /** First retry delay for downloads (doubles each retry). Tests make it short. */
@@ -49,8 +51,10 @@ class Garden(
 ) {
     private val app = context.applicationContext
     private val bsm = app.getSystemService(BlobStoreManager::class.java)
-    private val prefs = app.getSharedPreferences("garden.v${Handles.SCHEME}", Context.MODE_PRIVATE)
-    private val dir = File(app.filesDir, "garden/v${Handles.SCHEME}").apply { mkdirs() }
+    // Fixed names: they held private copies and download progress before handle scheme 2, and must keep doing so.
+    private val prefs = app.getSharedPreferences("garden.v1", Context.MODE_PRIVATE)
+    private val dir = File(app.filesDir, "garden/v1").apply { mkdirs() }
+    private val names = Handles.bundled(app)
     private val http = Http(retryDelayMs, downloadAttempts)
 
     // ---- what's there ----------------------------------------------------------------------------------------------
@@ -58,19 +62,19 @@ class Garden(
     @WorkerThread
     fun state(id: String): ModelState {
         val m = catalog[id]
-        val shared = m.files.map { sharedReady(m, it) }
+        val shared = m.files.map { sharedReady(it) }
         val private = m.files.map { privateReady(it) }
         // A model may be split (some files shared, some private: a shared download that failed halfway, then a
         // private one). It's Ready as soon as every file is usable one way or the other.
         if (m.files.indices.all { shared[it] || private[it] }) return ModelState.Ready(if (shared.any { it }) Where.SHARED else Where.PRIVATE)
         val missing = m.files.filterIndexed { i, _ -> !shared[i] && !private[i] }
-        if (missing.all { visible(m, it) }) return ModelState.SharedAvailable(missing.sumOf { it.size })
-        return ModelState.Missing(missing.sumOf { it.size }, missing.sumOf { partial(m, it) })
+        if (missing.all { visibleAs(it) != null }) return ModelState.SharedAvailable(missing.sumOf { it.size })
+        return ModelState.Missing(missing.sumOf { it.size }, missing.sumOf { partial(it) })
     }
 
     /** This app can use the file right now: we own the shared copy and it's still there, or we have a private copy. */
-    private fun usable(m: Model, f: ModelFile) = sharedReady(m, f) || privateReady(f)
-    private fun sharedReady(m: Model, f: ModelFile) = ownsShared(m, f) && visible(m, f)
+    private fun usable(f: ModelFile) = sharedReady(f) || privateReady(f)
+    private fun sharedReady(f: ModelFile) = ownedAs(f)?.let { visible(f, it) } ?: false
 
     // ---- getting it ------------------------------------------------------------------------------------------------
 
@@ -81,15 +85,16 @@ class Garden(
     @WorkerThread
     fun adopt(id: String): ModelState {
         val m = catalog[id]
-        val toShare = m.files.filterNot { usable(m, it) }
+        val toShare = m.files.filterNot { usable(it) }
         val shared = canShare(toShare)
         for (f in toShare) {
-            val h = handle(m, f)
-            val src = openBlobOrNull(h) ?: throw GardenException.NotReady(id, "${f.name} is no longer shared")
+            val n = visibleAs(f) ?: throw GardenException.NotReady(id, "${f.name} is no longer shared")
+            val src = openBlobOrNull(handle(f, n)) ?: throw GardenException.NotReady(id, "${f.name} is no longer shared")
             src.use {
                 if (shared) {
-                    commitStream(m, f, FileInputStream(it.fileDescriptor))
-                    lease(m, f)
+                    // Co-commit under the name it's shared as: the system keeps one copy for every app.
+                    commitStream(f, n, FileInputStream(it.fileDescriptor))
+                    lease(f, n)
                 } else {
                     writePrivate(f, FileInputStream(it.fileDescriptor))
                 }
@@ -106,17 +111,18 @@ class Garden(
     @WorkerThread
     fun download(id: String, share: Boolean = true, isCancelled: () -> Boolean = { false }, onProgress: (done: Long, total: Long) -> Unit = { _, _ -> }) {
         val m = catalog[id]
-        val todo = m.files.filterNot { usable(m, it) }
+        val todo = m.files.filterNot { usable(it) }
         val toShared = share && canShare(todo)
         var done = m.bytes - todo.sumOf { it.size }
         for (f in todo) {
-            if (toShared && visible(m, f)) {           // someone else finished it: adopt, don't download
-                openBlobOrNull(handle(m, f))?.use { commitStream(m, f, FileInputStream(it.fileDescriptor)); lease(m, f) }
-                if (ownsShared(m, f)) { done += f.size; onProgress(done, m.bytes); continue }
+            val there = if (toShared) visibleAs(f) else null
+            if (there != null) {                       // someone else finished it: adopt, don't download
+                openBlobOrNull(handle(f, there))?.use { commitStream(f, there, FileInputStream(it.fileDescriptor)); lease(f, there) }
+                if (ownedAs(f) != null) { done += f.size; onProgress(done, m.bytes); continue }
             }
             val base = done
             val report = { have: Long -> onProgress(base + have, m.bytes) }
-            if (toShared) downloadShared(m, f, isCancelled, report) else downloadPrivate(f, isCancelled, report)
+            if (toShared) downloadShared(f, isCancelled, report) else downloadPrivate(f, isCancelled, report)
             done += f.size
             onProgress(done, m.bytes)
         }
@@ -129,15 +135,17 @@ class Garden(
     @WorkerThread
     fun contribute(id: String, share: Boolean = true, source: (ModelFile) -> InputStream?) {
         val m = catalog[id]
-        val todo = m.files.filterNot { usable(m, it) }
+        val todo = m.files.filterNot { usable(it) }
         val toShared = share && canShare(todo)
         for (f in todo) {
             val input = source(f) ?: continue
             input.use {
                 if (toShared) {
-                    if (visible(m, f)) openBlobOrNull(handle(m, f))?.use { b -> commitStream(m, f, FileInputStream(b.fileDescriptor)) }
-                    else commitStream(m, f, it)
-                    lease(m, f)
+                    val there = visibleAs(f)
+                    val n = there ?: primary(f)
+                    if (there != null) openBlobOrNull(handle(f, there))?.use { b -> commitStream(f, n, FileInputStream(b.fileDescriptor)) }
+                    else commitStream(f, n, it)
+                    lease(f, n)
                 } else writePrivate(f, it)
             }
         }
@@ -148,9 +156,11 @@ class Garden(
     fun remove(id: String) {
         val m = catalog[id]
         for (f in m.files) {
-            if (ownsShared(m, f)) try { bsm.releaseLease(handle(m, f)) } catch (e: Exception) { Log.w(TAG, "release ${f.name}: $e") }
-            prefs.edit().remove(committedKey(m, f)).apply()
-            sessionId(m, f)?.let { abandon(m, f, it) }
+            for (n in names.names(f.sha256)) {
+                if (owns(f, n)) try { bsm.releaseLease(handle(f, n)) } catch (e: Exception) { Log.w(TAG, "release ${f.name}: $e") }
+                prefs.edit().remove(committedKey(f, n)).apply()
+            }
+            sessionId(f)?.let { abandon(f, it) }
             File(dir, f.sha256).delete(); File(dir, f.sha256 + ".part").delete()
         }
     }
@@ -176,7 +186,7 @@ class Garden(
         try {
             for (m in models) for (f in m.files) {
                 val id = m.id
-                val pfd = (if (ownsShared(m, f)) openBlobOrNull(handle(m, f)) else null)
+                val pfd = ownedAs(f)?.let { openBlobOrNull(handle(f, it)) }
                     ?: (if (privateReady(f)) ParcelFileDescriptor.open(File(dir, f.sha256), ParcelFileDescriptor.MODE_READ_ONLY) else null)
                     ?: throw GardenException.NotReady(id, "${f.name} isn't on this phone")
                 if (pfd.statSize != f.size) { pfd.close(); throw GardenException.NotReady(id, "${f.name} has the wrong size") }
@@ -190,66 +200,75 @@ class Garden(
     }
 
     // ---- shared store ----------------------------------------------------------------------------------------------
+    // A file may be shared under more than one name (Handles): new copies use the first; any one this app owns, or
+    // that's in the store, counts.
 
-    private fun handle(m: Model, f: ModelFile): BlobHandle =
-        BlobHandle.createWithSha256(Handles.digest(f.sha256), Handles.label(m, f), 0, Handles.tag(m, f))
+    private fun primary(f: ModelFile) = names.names(f.sha256).first()
+
+    private fun handle(f: ModelFile, n: Handles.Name): BlobHandle =
+        BlobHandle.createWithSha256(Handles.digest(f.sha256), n.label, 0, n.tag)
 
     private fun openBlobOrNull(h: BlobHandle): ParcelFileDescriptor? =
         try { bsm.openBlob(h) } catch (e: SecurityException) { null } catch (e: IOException) { null }
 
-    private fun visible(m: Model, f: ModelFile) = openBlobOrNull(handle(m, f))?.use { it.statSize == f.size } ?: false
+    private fun visible(f: ModelFile, n: Handles.Name) = openBlobOrNull(handle(f, n))?.use { it.statSize == f.size } ?: false
 
-    /** We committed it (recorded locally: the system can't be asked) and still lease it. */
-    private fun ownsShared(m: Model, f: ModelFile): Boolean =
-        prefs.getBoolean(committedKey(m, f), false) && leased().any { it == handle(m, f) }
+    /** The name some app shares this file under, if any. */
+    private fun visibleAs(f: ModelFile): Handles.Name? = names.names(f.sha256).firstOrNull { visible(f, it) }
+
+    /** We committed it under [n] (recorded locally: the system can't be asked) and still lease it. */
+    private fun owns(f: ModelFile, n: Handles.Name): Boolean =
+        prefs.getBoolean(committedKey(f, n), false) && leased().any { it == handle(f, n) }
+
+    private fun ownedAs(f: ModelFile): Handles.Name? = names.names(f.sha256).firstOrNull { owns(f, it) }
 
     private fun leased(): List<BlobHandle> = try { bsm.leasedBlobs } catch (e: IOException) { emptyList() }
 
-    /** Enough lease quota for these files? (max(300 MiB, 1% of storage) per app; Gemma-size models never fit.) */
     private fun canShare(files: List<ModelFile>) = Quota.fits(files.sumOf { it.size }, bsm.remainingLeaseQuotaBytes)
 
-    private fun lease(m: Model, f: ModelFile) = bsm.acquireLease(handle(m, f), leaseDescription)
+    private fun lease(f: ModelFile, n: Handles.Name) = bsm.acquireLease(handle(f, n), leaseDescription)
 
     /** Streams [input] into a new session for this file and commits it publicly; the system checks the SHA-256. */
-    private fun commitStream(m: Model, f: ModelFile, input: InputStream) {
-        val id = bsm.createSession(handle(m, f))
+    private fun commitStream(f: ModelFile, n: Handles.Name, input: InputStream) {
+        val id = bsm.createSession(handle(f, n))
         try {
             bsm.openSession(id).use { s ->
                 ParcelFileDescriptor.AutoCloseOutputStream(s.openWrite(0, f.size)).use { out -> copy(input, out) }
-                commit(m, f, s)
+                commit(f, n, s)
             }
         } catch (e: Exception) { runCatching { bsm.abandonSession(id) }; throw e }
     }
 
-    private fun commit(m: Model, f: ModelFile, s: BlobStoreManager.Session) {
+    private fun commit(f: ModelFile, n: Handles.Name, s: BlobStoreManager.Session) {
         s.allowPublicAccess()
         val done = CountDownLatch(1); var code = -1
         val ex = Executors.newSingleThreadExecutor()
         try { s.commit(ex) { code = it; done.countDown() }; done.await() } finally { ex.shutdown() }
-        if (code != 0) throw GardenException.Checksum("${m.id}/${f.name}")
-        prefs.edit().putBoolean(committedKey(m, f), true).apply()
+        if (code != 0) throw GardenException.Checksum(f.name)
+        prefs.edit().putBoolean(committedKey(f, n), true).apply()
     }
 
-    private fun downloadShared(m: Model, f: ModelFile, isCancelled: () -> Boolean, onBytes: (Long) -> Unit) {
-        var sid = sessionId(m, f) ?: newSession(m, f)
-        val session = try { bsm.openSession(sid) } catch (e: Exception) { prefs.edit().remove(sessionKey(m, f)).remove(writtenKey(m, f)).apply(); bsm.openSession(newSession(m, f).also { sid = it }) }
+    private fun downloadShared(f: ModelFile, isCancelled: () -> Boolean, onBytes: (Long) -> Unit) {
+        val n = primary(f)
+        var sid = sessionId(f) ?: newSession(f)
+        val session = try { bsm.openSession(sid) } catch (e: Exception) { prefs.edit().remove(sessionKey(f)).remove(writtenKey(f)).apply(); bsm.openSession(newSession(f).also { sid = it }) }
         session.use { s ->
             // The resume point is our own count: Session.getSize() reports the whole preallocated length as soon as
             // openWrite() is called (found by tests/e2e.sh check 12), so it can't say how much really arrived.
-            http.fetch(f, have = { written(m, f) }, isCancelled, onBytes) { offset, restart ->
+            http.fetch(f, have = { written(f) }, isCancelled, onBytes) { offset, restart ->
                 if (restart) Log.i(TAG, "${f.name}: server ignored Range, rewriting from 0")
                 Counting(ParcelFileDescriptor.AutoCloseOutputStream(s.openWrite(offset, f.size - offset)), offset) { n ->
-                    prefs.edit().putLong(writtenKey(m, f), n).apply()
+                    prefs.edit().putLong(writtenKey(f), n).apply()
                 }
             }
-            try { commit(m, f, s) } catch (e: GardenException.Checksum) { abandon(m, f, sid); throw e }
+            try { commit(f, n, s) } catch (e: GardenException.Checksum) { abandon(f, sid); throw e }
         }
-        prefs.edit().remove(sessionKey(m, f)).remove(writtenKey(m, f)).apply()
-        lease(m, f)
+        prefs.edit().remove(sessionKey(f)).remove(writtenKey(f)).apply()
+        lease(f, n)
     }
 
     /** Bytes really written into this file's session, saved as they land (a lower bound: rewriting is harmless). */
-    private fun written(m: Model, f: ModelFile) = prefs.getLong(writtenKey(m, f), 0L)
+    private fun written(f: ModelFile) = prefs.getLong(writtenKey(f), 0L)
 
     /** Passes writes through and reports the running total every MB and at close. */
     private class Counting(private val out: OutputStream, private var total: Long, private val save: (Long) -> Unit) : OutputStream() {
@@ -261,18 +280,18 @@ class Garden(
         override fun close() { out.use { it.flush() }; save(total) }
     }
 
-    private fun newSession(m: Model, f: ModelFile): Long =
-        bsm.createSession(handle(m, f)).also { prefs.edit().putLong(sessionKey(m, f), it).apply() }
+    private fun newSession(f: ModelFile): Long =
+        bsm.createSession(handle(f, primary(f))).also { prefs.edit().putLong(sessionKey(f), it).apply() }
 
-    private fun sessionId(m: Model, f: ModelFile): Long? = prefs.getLong(sessionKey(m, f), 0L).takeIf { it > 0 }
+    private fun sessionId(f: ModelFile): Long? = prefs.getLong(sessionKey(f), 0L).takeIf { it > 0 }
 
-    private fun abandon(m: Model, f: ModelFile, sid: Long) {
+    private fun abandon(f: ModelFile, sid: Long) {
         runCatching { bsm.abandonSession(sid) }
-        prefs.edit().remove(sessionKey(m, f)).remove(writtenKey(m, f)).apply()
+        prefs.edit().remove(sessionKey(f)).remove(writtenKey(f)).apply()
     }
 
-    private fun partial(m: Model, f: ModelFile): Long =
-        if (sessionId(m, f) != null) written(m, f) else File(dir, f.sha256 + ".part").length()
+    private fun partial(f: ModelFile): Long =
+        if (sessionId(f) != null) written(f) else File(dir, f.sha256 + ".part").length()
 
     // ---- private store (fallback when sharing is off or the quota is full) -----------------------------------------
 
@@ -297,9 +316,10 @@ class Garden(
         check(part.renameTo(File(dir, f.sha256))) { "couldn't save ${f.name}" }
     }
 
-    private fun committedKey(m: Model, f: ModelFile) = "committed:" + Handles.tag(m, f) + ":" + f.sha256
-    private fun sessionKey(m: Model, f: ModelFile) = "session:" + Handles.tag(m, f) + ":" + f.sha256
-    private fun writtenKey(m: Model, f: ModelFile) = "written:" + Handles.tag(m, f) + ":" + f.sha256
+    // Keyed by the handle's tag, as before scheme 2, so keys written by older versions still match.
+    private fun committedKey(f: ModelFile, n: Handles.Name) = "committed:" + n.tag + ":" + f.sha256
+    private fun sessionKey(f: ModelFile) = "session:" + primary(f).tag + ":" + f.sha256
+    private fun writtenKey(f: ModelFile) = "written:" + primary(f).tag + ":" + f.sha256
 
     internal companion object {
         const val TAG = "Garden"

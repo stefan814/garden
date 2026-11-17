@@ -9,7 +9,9 @@ store (BlobStoreManager), found by SHA-256. Design and test results: [../DESIGN.
 // settings.gradle.kts of the app:  includeBuild("../../garden/android")   (or include the :garden module)
 // app/build.gradle.kts:            implementation("io.github.stefan814:garden")   / implementation(project(":garden"))
 
-val garden = Garden(context)                       // reads the bundled catalog (catalog/garden-catalog.json)
+// This app's own models: assets/my-models.json, {"models": [{"id", "files": [{"name", "size", "sha256", "urls"}]}]}
+// ("title", "capability", "license" optional), or build a Catalog in code. Any model works.
+val garden = Garden(context, Catalog.fromAsset(context, "my-models.json"))
 val id = "parakeet-tdt-110m-en-int8"
 
 when (val s = garden.state(id)) {                  // all calls below are blocking: run them off the main thread
@@ -40,7 +42,11 @@ garden.open(id).use { m ->                         // checks every file first; t
   blocks reopening shared files by path. Always use `open()` + `assets` + `path()`.
 - **Every app that uses a shared file co-commits it.** `adopt`/`download`/`contribute` do this. Without it, a fresh
   install can't find the file once the first app is gone.
-- **The catalog's ids, file names and hashes are frozen once published.** Add a new id instead of editing one.
+- **Sharing goes by hash, not by name.** Two apps may list the same file under any ids and file names; they still get
+  one copy. Android's handle for a file is `garden/v2/<sha256>` with the label "Garden shared model file" (what Settings
+  shows), except for files Garden shared before apps had their own lists, which keep their `garden/v1/<id>/<file>`
+  handle from the frozen table `garden/src/main/assets/garden-v1-handles.json`. Never edit that table or the naming.
+- **Within one app, a file may be in only one model.** Removing one model would otherwise take it from the other.
 
 ## Tests
 

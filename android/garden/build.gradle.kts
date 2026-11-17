@@ -3,8 +3,6 @@ android {
     namespace = "io.github.stefan814.garden"
     compileSdk = 37
     defaultConfig { minSdk = 31; consumerProguardFiles("consumer-rules.pro") }
-    // The catalog lives at the repo root so the iOS package can read the same file.
-    sourceSets { getByName("main") { assets.srcDir("../../catalog") } }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     testOptions { unitTests.isReturnDefaultValues = true }
 }

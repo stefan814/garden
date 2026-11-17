@@ -1,9 +1,9 @@
 # Garden — shared on-device models for Skald, Earshot and future apps
 
-Status (2026-11-14): two libraries, both working.
-- **Android** (`android/`): 40 end-to-end checks pass on the emulator and a Pixel 10a; every real catalog model
-  downloads and loads.
-- **iPhone** (`apple/`, GardenKit): 12 tests pass on macOS; 23 two-app checks pass in the iOS Simulator. Not run on a
+Status (2026-11-16): two libraries, both working, for any model each app lists.
+- **Android** (`android/`): 51 end-to-end checks pass on the emulator (40 also passed on a Pixel 10a before
+  2026-11-16); every model in the harness's real list downloads and loads.
+- **iPhone** (`apple/`, GardenKit): 13 tests pass on macOS; 22 two-app checks pass in the iOS Simulator. Not run on a
   real iPhone yet.
 
 This repo holds Garden only. Each app (Skald, Earshot, …) adds Garden in its own repo; nothing app-specific lives
@@ -49,8 +49,15 @@ changes timings).
 
 ### Shared tier = BlobStoreManager
 
-- **Handle identity is sha256 + label + tag + expiry.** If one character differs, you get a silent duplicate. So
-  handles come from a single `catalog.json` in this repo: `label = "<model id>"`, `tag = "garden/<model id>/<file>"`, expiry 0.
+- **Handle identity is sha256 + label + tag + expiry.** If one character differs, you get a silent duplicate. Since
+  2026-11-16 each app brings its own model list, so a handle depends on the file's bytes alone:
+  - **Scheme 2** (any file): label `Garden shared model file`, tag `garden/v2/<sha256>`, expiry 0.
+  - **Scheme 1** (the 21 files Garden's own catalog listed before then): label `Garden model <id> (<file>)`, tag
+    `garden/v1/<id>/<file>`, from the id and name that catalog gave them, kept in the frozen table
+    `android/garden/src/main/assets/garden-v1-handles.json` (keyed by hash; a unit test pins its SHA-256). Phones
+    already hold these, and apps on older Garden versions look for them there, so they never move: no copying, and
+    old and new apps keep sharing one copy.
+  - Private copies (`files/garden/v1`) and the `garden.v1` preferences keep their names; their keys use the handle's tag.
 - **Access: `allowPublicAccess()`.** These are public, SHA-pinned upstream models. Skald and Earshot use different signing
   keys, so `allowSameSignatureAccess` won't work. Google's docs say public
   access is "meant for publicly available data committed from libraries and SDKs".
@@ -127,7 +134,8 @@ Garden.release(modelId)                               // app no longer needs it
 
 ## iOS design (`GardenKit`, Swift package) — BUILT 2026-11-14
 
-`Package.swift` at the repo root, sources in `apple/`. Same catalog (a copied resource; a test fails if the copies differ).
+`Package.swift` at the repo root, sources in `apple/`. Each app passes its own model list, as on Android. Files were
+always stored by hash here, so nothing else changed.
 
 - **Shared tier: an optional App Group container.**
   - Files live at `Garden/blobs/<sha256>`. Each app that uses one leaves a marker at `Garden/users/<sha256>/<appID>`.
@@ -171,7 +179,7 @@ likely shape is a small companion "Garden" app that owns the file and hands out 
 
 ## Build order
 
-1. ✅ `catalog/garden-catalog.json`: Parakeet 110M, Silero VAD, TitaNet-small, pyannote seg 3.0. Every hash matches what
+1. ✅ `catalog/garden-catalog.json` (moved into the apps on 2026-11-16, see step 5): Parakeet 110M, Silero VAD, TitaNet-small, pyannote seg 3.0. Every hash matches what
    the apps pin today. Parakeet's per-file source is a third-party Hugging Face mirror (punitd, pinned commit), since
    k2-fsa only ships it as a tar.bz2. The SHA check guarantees the bytes, but not that the mirror stays up. Each file
    takes several `urls` (tested), so a self-hosted copy can be added as a second source.
@@ -198,6 +206,15 @@ likely shape is a small companion "Garden" app that owns the file and hands out 
    `apple/harness/e2e.sh`.
 4. Adding Garden to each app happens in that app's repo, not here: Skald Android and iPhone, Earshot Android and
    iPhone.
+5. ✅ **Model-agnostic (2026-11-16).** Garden no longer ships a model list: `Garden(context, catalog)` /
+   `Garden(appID:sharedContainer:catalog:)` take the app's own, and the old list moved into the apps (Earshot's
+   `catalog/earshot-models.json`; the Android harness's `real-catalog.json`). Android handles are named by hash
+   (scheme 2), with the frozen scheme-1 table for files already on phones. Tests: 9 JVM + 51 emulator checks (new: one
+   app's own name for Parakeet's vocabulary finds the shared copy, and two apps calling a new file different things get
+   one `garden/v2/<sha>` blob and no second download), 13 Swift tests + 22 Simulator checks. Upgrading Earshot in place
+   on the emulator and Simulator kept Cantonese ready with no download, and it still transcribes. Skald stays on its
+   pinned Garden until its submodule is bumped. Its files keep their v1 handles (its leases on the emulator were
+   unchanged), so it should keep sharing with Earshot; that pairing wasn't run after the change.
 5. Not done: a real-iPhone run, including whether a free personal team may use App Groups.
 
 ## Decisions (2026-11-14)

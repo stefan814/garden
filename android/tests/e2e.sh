@@ -10,6 +10,7 @@ P=io.github.stefan814.garden.harness
 DATA=tests/testdata; LOG=$(mktemp); PASS=0
 mkdir -p $DATA
 cp harness/src/a/assets/models/silero-vad-v5/vad.onnx harness/src/a/assets/models/titanet-small-en/embed.onnx $DATA/
+python3 tests/make-testdata.py $DATA >/dev/null
 python3 tests/server.py $DATA $LOG & SERVER=$!
 # Emulators reach the host at 10.0.2.2; a real phone reaches it through adb reverse at 127.0.0.1.
 if [[ $SERIAL == emulator-* ]]; then HOST=10.0.2.2; else HOST=127.0.0.1; $ADB reverse tcp:8765 tcp:8765 >/dev/null; fi
@@ -34,7 +35,7 @@ echo "### setup: fresh installs, no Garden blobs"
 $ADB uninstall $P.a >/dev/null 2>&1; $ADB uninstall $P.b >/dev/null 2>&1
 $ADB install -t harness/build/outputs/apk/a/debug/harness-a-debug.apk >/dev/null
 $ADB install -t harness/build/outputs/apk/b/debug/harness-b-debug.apk >/dev/null
-OUT=$($ADB shell dumpsys blob_store | grep -c "label:Garden model" || true); expect "no Garden blobs before the run" "^0$"
+OUT=$($ADB shell dumpsys blob_store | grep -c "label:Garden " || true); expect "no Garden blobs before the run" "^0$"
 
 echo "### real catalog, across two apps"
 step b state parakeet-tdt-110m-en-int8;            expect "1 b sees nothing yet" "STATE parakeet-tdt-110m-en-int8 = Missing\(partial=no\)"
@@ -52,6 +53,21 @@ step a remove parakeet-tdt-110m-en-int8;           expect "10b a removes its hol
 step b load parakeet-tdt-110m-en-int8;             expect "10c b unaffected" "LOADED .* text='The goblin king"
 step b load silero-vad-v5;                         expect "11 a model nobody has: clean error" "ERROR NotReady.*isn't on this phone"
 
+echo "### same bytes, any app's names for them"
+T="--es catalog test --es host $HOST"
+step b state t-alias $T;                           expect "22 b already holds Parakeet's vocabulary: under another name it's Ready" "STATE t-alias = Ready\(SHARED\)"
+step a state t-alias $T;                           expect "22 a (which let go) finds it by its own name" "STATE t-alias = SharedAvailable"
+step a adopt t-alias $T;                           expect "22 and adopts it" "STATE t-alias = Ready\(SHARED\)"
+OUT=$($ADB shell dumpsys blob_store | grep -c "garden/v1/parakeet-tdt-110m-en-int8/tokens.txt");  expect "22 one copy on the phone" "^1$"
+step a download t-v2a $T;                          expect "23 a downloads a file no older Garden knew" "STATE t-v2a = Ready\(SHARED\)"
+BEFORE=$(served ok alias.bin)
+step b state t-v2b $T;                             expect "23 b, calling it something else, sees it" "STATE t-v2b = SharedAvailable"
+step b adopt t-v2b $T;                             expect "23 and adopts it" "STATE t-v2b = Ready\(SHARED\)"
+OUT="$BEFORE $(served ok alias.bin)";              expect "23 ...without touching the network" "^([0-9]+) \1$"
+OUT=$($ADB shell dumpsys blob_store | grep -c "garden/v2/0872da6e48ff149e3ce7379620ab956dd8751ac115a6489dac028181ac314524"); expect "23 one copy, named by its hash" "^1$"
+step a remove t-v2a $T;                         expect "23 a lets go" "STATE t-v2a = SharedAvailable"
+step b remove t-v2b $T;                            expect "23 b lets go" "STATE t-v2b = (SharedAvailable|Missing)"
+
 echo "### split models and descriptor leaks"
 step a contribute t-split --es catalog test --es host $HOST --es skip embed.onnx; expect "20 half shared, half missing" "STATE t-split = Missing\(partial=no\)"
 step a contribute t-split --es catalog test --es host $HOST --ez share false;     expect "20 rest added privately: a split model is Ready" "STATE t-split = Ready\(SHARED\)"
@@ -63,31 +79,31 @@ OUT=$(echo $N | awk '{ print ($2 - $1 <= 3) ? "flat" : "LEAK " $0 }'); expect "2
 step a remove t-split --es catalog test --es host $HOST;          expect "21 split model removed" "STATE t-split = Missing\(partial=no\)"
 
 echo "### downloads (test catalog, host server)"
-T="--es catalog test --es host $HOST"
 step a download t-resume $T;                       expect "12 dropped connection resumes" "= Ready\(SHARED\)"
-OUT=$(grep "^cut vad.onnx" $LOG);                  expect "12 second request asked for a Range" "^cut vad.onnx bytes=[1-9][0-9]*-$"
+OUT=$(grep "^cut resume.bin" $LOG);                 expect "12 second request asked for a Range" "^cut resume.bin bytes=[1-9][0-9]*-$"
 step a download t-norange $T;                      expect "13 server ignoring Range restarts cleanly" "= Ready\(SHARED\)"
 OUT=$(grep "^cutnorange" $LOG);                    expect "13 resume was attempted" "bytes=[1-9]"
 step a load t-norange $T;                          expect "13 and the file works" "LOADED t-norange .* dim=192"
 step a download t-corrupt $T;                      expect "14 bad bytes rejected by the system's SHA check" "ERROR Checksum"
 expect "14 nothing half-kept" "STATE t-corrupt = Missing\(partial=no\)"
 step a download t-mirror $T;                       expect "15 dead mirror skipped" "= Ready\(SHARED\)"
-OUT=$(grep -E "^(dead|ok) vad.onnx" $LOG);         expect "15 tried dead first, then ok" "dead vad.onnx"
+OUT=$(grep -E "^(dead|ok) mirror.bin" $LOG);       expect "15 tried dead first, then ok" "dead mirror.bin"
 step a download t-privcorrupt $T --ez share false; expect "16 private bad bytes rejected" "ERROR Checksum"
-expect "16 nothing half-kept" "STATE t-privcorrupt = Missing\(partial=no\)"
+expect "16 nothing half-kept (the split test's shared copy of the same file may still be there)" "STATE t-privcorrupt = (Missing\(partial=no\)|SharedAvailable)"
 step a download t-private $T --ez share false;     expect "17 private download" "= Ready\(PRIVATE\)"
 step a load t-private $T;                          expect "17 private copy loads" "LOADED t-private .* speechWindows="
 step a state t-privcorrupt $T;                     expect "17 private copies are shared by hash inside one app" "= Ready\(PRIVATE\)"
 step a download t-pause $T --ei attempts 1;        expect "18 a failed try leaves a paused download" "STATE t-pause = Missing\(partial=yes\)"
 step a download t-pause $T;                        expect "18 next call resumes and finishes" "= Ready\(SHARED\)"
-OUT=$(grep "^cut embed.onnx" $LOG);                expect "18 resumed with a Range" "bytes=[1-9]"
-BEFORE=$(served cut vad.onnx)
+OUT=$(grep "^cut pause.bin" $LOG);                 expect "18 resumed with a Range" "bytes=[1-9]"
+BEFORE=$(served cut resume.bin)
 step b state t-resume $T;                          expect "19 b sees a's download" "= SharedAvailable"
 step b download t-resume $T;                       expect "19 b 'download' adopts instead" "= Ready\(SHARED\)"
-OUT="$BEFORE $(served cut vad.onnx)";              expect "19 ...without touching the network" "^([0-9]+) \1$"
+OUT="$BEFORE $(served cut resume.bin)";              expect "19 ...without touching the network" "^([0-9]+) \1$"
 
 echo "### cleanup"
 for m in parakeet-tdt-110m-en-int8; do step b remove $m; done
+step a remove t-alias $T
 for m in t-resume t-norange t-mirror t-pause; do step a remove $m $T; step b remove $m $T; done
 step a remove t-private $T
 $ADB uninstall $P.a >/dev/null; $ADB uninstall $P.b >/dev/null

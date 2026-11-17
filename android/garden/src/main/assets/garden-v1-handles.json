@@ -1,0 +1,131 @@
+{
+ "_readme": "FROZEN. Every file Garden's own catalog ever listed (git history up to 98fdf8e), with the model id and file name its Android shared-store handle was built from (handle scheme 1: label 'Garden model <id> (<name>)', tag 'garden/v1/<id>/<name>'). Phones already hold these files under those handles, and apps on older Garden versions still look for them there, so Garden keeps using them for these hashes. Never edit or remove an entry. Files not listed here use scheme 2 (named by SHA-256 alone).",
+ "files": {
+  "0222a86147299d4dee90edf95b6d13827edb42ad8b7c9cf0b2582f030937c0b5": [
+   [
+    "parakeet-tdt-0.6b-v3-int8",
+    "decoder.int8.onnx"
+   ]
+  ],
+  "0f35509ddeb9b39002fb077d979a9fe74f06eb0bc4dd5c34f512f82e5111d657": [
+   [
+    "parakeet-tdt-110m-en-int8",
+    "encoder.int8.onnx"
+   ]
+  ],
+  "1afbe69c1ffdabee94755f42e4daf1d93549131a3da11356bda84fcef0f2c479": [
+   [
+    "parakeet-tdt-0.6b-v3-int8",
+    "encoder.int8.onnx"
+   ]
+  ],
+  "201bfd9e12ec4ac9ee3b23c5e071d9fa2381a8b21df317e2e08a170d6f1f55d3": [
+   [
+    "wenetspeech-yue-ctc-int8",
+    "model.int8.onnx"
+   ]
+  ],
+  "220ad67ca923bef2fa91f2390c786097bf305bceb5e261d4af67b38e938e1079": [
+   [
+    "pyannote-seg-3.0",
+    "model.onnx"
+   ]
+  ],
+  "2870d843e14c1e187bf1913a521562a63b53933814bd7f2145120468f494a049": [
+   [
+    "moonshine-base-tokens-zh-ar",
+    "tokens.txt"
+   ]
+  ],
+  "331aafa2fc7f7e55ba28376eef08eaf919ae105bb719cd64ba6875505dca72b3": [
+   [
+    "moonshine-base-es-q",
+    "encoder_model.ort"
+   ]
+  ],
+  "450e56bd2f036fe5b6aa821865838cc5aa9d8b0106134ce9a9ba0664abe6cd10": [
+   [
+    "parakeet-tdt-110m-en-int8",
+    "tokens.txt"
+   ]
+  ],
+  "68e50ebe0317ce909f098044a5dda2a76e6b86dc882829a317771fbafc5826ae": [
+   [
+    "moonshine-base-ar-q",
+    "encoder_model.ort"
+   ]
+  ],
+  "8e6513ad66a3a71ca86824746a09051eeb60468940eaf8201ce758e8919e2b5d": [
+   [
+    "moonshine-base-es-q",
+    "decoder_model_merged.ort"
+   ]
+  ],
+  "8f272cb50818e28ad86bbffc21e1450a4d57155e95f099ca6a236f38f4d9eafb": [
+   [
+    "moonshine-base-ar-q",
+    "decoder_model_merged.ort"
+   ]
+  ],
+  "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6": [
+   [
+    "silero-vad-v5",
+    "vad.onnx"
+   ]
+  ],
+  "ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e": [
+   [
+    "titanet-small-en",
+    "embed.onnx"
+   ]
+  ],
+  "bf79fce626e123739ec37eceb2b2a010a93d720da266dd5d8ef9a47ef9a7dc36": [
+   [
+    "moonshine-base-zh-q",
+    "decoder_model_merged.ort"
+   ]
+  ],
+  "bf7dff69e9f2cdbe9943d70da358f38b361c115ba0105bae7e908e0d6ec782f6": [
+   [
+    "parakeet-tdt-110m-en-int8",
+    "joiner.int8.onnx"
+   ]
+  ],
+  "c6e35883ba038f70ceea8b4a21cf79742adbda7e6730cbff27460857e0667a02": [
+   [
+    "moonshine-base-es-q",
+    "tokens.txt"
+   ]
+  ],
+  "c725a24b58595905921ea2a47e2bcf0f18c78f4d171d96136f2dcbc8c77a58a6": [
+   [
+    "moonshine-base-zh-q",
+    "encoder_model.ort"
+   ]
+  ],
+  "c7750677a1183606d2fd6f16d792e06e70d9843dba8a0c6e23a9dec78e06977a": [
+   [
+    "wenetspeech-yue-ctc-int8",
+    "tokens.txt"
+   ]
+  ],
+  "cbd02f3696e9944970111fb439d9c3fd365a80374565f13f2b9c7007d253fc98": [
+   [
+    "parakeet-tdt-0.6b-v3-int8",
+    "joiner.int8.onnx"
+   ]
+  ],
+  "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d": [
+   [
+    "parakeet-tdt-0.6b-v3-int8",
+    "tokens.txt"
+   ]
+  ],
+  "f7c331c5504c2e593c76ed22b728e3f554af6c4a383dde862e719ced08b1da19": [
+   [
+    "parakeet-tdt-110m-en-int8",
+    "decoder.int8.onnx"
+   ]
+  ]
+ }
+}

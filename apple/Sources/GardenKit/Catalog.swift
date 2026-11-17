@@ -6,15 +6,33 @@ public struct ModelFile: Codable, Sendable, Hashable {
     public let size: Int64
     public let sha256: String
     public let urls: [URL]
+
+    public init(name: String, size: Int64, sha256: String, urls: [URL]) {
+        self.name = name; self.size = size; self.sha256 = sha256; self.urls = urls
+    }
 }
 
-/// A model: one or more files an engine loads together.
+/// A model: one or more files an engine loads together. [id] and the file names are this app's own words for it;
+/// sharing between apps goes by each file's SHA-256 alone, so two apps may call the same file anything they like.
 public struct Model: Codable, Sendable, Hashable {
     public let id: String
+    public let files: [ModelFile]
     public let title: String
     public let capability: String
     public let license: String
-    public let files: [ModelFile]
+
+    public init(id: String, files: [ModelFile], title: String? = nil, capability: String = "", license: String = "") {
+        self.id = id; self.files = files; self.title = title ?? id; self.capability = capability; self.license = license
+    }
+
+    public init(from decoder: Decoder) throws {
+        enum K: String, CodingKey { case id, files, title, capability, license }
+        let c = try decoder.container(keyedBy: K.self)
+        self.init(id: try c.decode(String.self, forKey: .id), files: try c.decode([ModelFile].self, forKey: .files),
+                  title: try c.decodeIfPresent(String.self, forKey: .title),
+                  capability: try c.decodeIfPresent(String.self, forKey: .capability) ?? "",
+                  license: try c.decodeIfPresent(String.self, forKey: .license) ?? "")
+    }
 
     public var bytes: Int64 { files.reduce(0) { $0 + $1.size } }
     public func file(_ name: String) throws -> ModelFile {
@@ -23,10 +41,19 @@ public struct Model: Codable, Sendable, Hashable {
     }
 }
 
-/// The shared list of models, the same file the Android library reads (catalog/garden-catalog.json).
+/// The models one app uses. Each app brings its own (any model, from anywhere): Garden shares a file with every other
+/// app that lists the same bytes (same SHA-256), whatever either app calls it. Build one in code or with [parse].
 public struct Catalog: Sendable {
-    public static let scheme = 1
+    /// The JSON layout version ("format"; older files call it "scheme"). Only 1 exists.
+    public static let format = 1
     public let models: [Model]
+
+    /// [allowSameFile] is for tests only: within one app's list a file must not be in two models, or removing one
+    /// model would take the file away from the other.
+    public init(models: [Model], allowSameFile: Bool = false) throws {
+        try Self.validate(models, allowSameFile: allowSameFile)
+        self.models = models
+    }
 
     public func model(_ id: String) throws -> Model {
         guard let m = models.first(where: { $0.id == id }) else { throw GardenError.unknownModel(id) }
@@ -35,24 +62,23 @@ public struct Catalog: Sendable {
 
     public func models(for capability: String) -> [Model] { models.filter { $0.capability == capability } }
 
-    /// The catalog bundled with GardenKit.
-    public static func bundled() throws -> Catalog { try parse(Data(contentsOf: bundledURL())) }
-
-    static func bundledURL() throws -> URL {
-        guard let url = Bundle.module.url(forResource: "garden-catalog", withExtension: "json") else {
-            throw GardenError.badCatalog("garden-catalog.json is missing from GardenKit's bundle")
+    /// A catalog JSON file in this app's bundle.
+    public static func bundled(_ name: String, in bundle: Bundle = .main) throws -> Catalog {
+        guard let url = bundle.url(forResource: name, withExtension: "json") else {
+            throw GardenError.badCatalog("\(name).json isn't in the app's bundle")
         }
-        return url
+        return try parse(Data(contentsOf: url))
     }
 
-    /// [allowSameFile] is for test catalogs only: real ones must not list one file in two models.
+    /// {"format": 1, "models": [{"id", "files": [{"name", "size", "sha256", "urls"}], "title"?, "capability"?,
+    /// "license"?}]}. "format" may be left out.
     public static func parse(_ data: Data, allowSameFile: Bool = false) throws -> Catalog {
-        struct Root: Decodable { let scheme: Int; let models: [Model] }
+        struct Root: Decodable { let format: Int?; let scheme: Int?; let models: [Model] }
         let root: Root
         do { root = try JSONDecoder().decode(Root.self, from: data) } catch { throw GardenError.badCatalog("\(error)") }
-        guard root.scheme == scheme else { throw GardenError.badCatalog("scheme \(root.scheme), GardenKit knows \(scheme)") }
-        try validate(root.models, allowSameFile: allowSameFile)
-        return Catalog(models: root.models)
+        let f = root.format ?? root.scheme ?? format
+        guard f == format else { throw GardenError.badCatalog("format \(f), GardenKit knows \(format)") }
+        return try Catalog(models: root.models, allowSameFile: allowSameFile)
     }
 
     private static func validate(_ models: [Model], allowSameFile: Bool) throws {
@@ -89,7 +115,7 @@ public enum GardenError: Error, LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .unknownModel(let id): "No model '\(id)' in the Garden catalog"
+        case .unknownModel(let id): "No model '\(id)' in this app's Garden catalog"
         case .unknownFile(let id, let f): "\(id) has no file \(f)"
         case .badCatalog(let why): "Bad Garden catalog: \(why)"
         case .notReady(let id, let why): "Model '\(id)' isn't ready: \(why)"

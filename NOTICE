@@ -3,7 +3,7 @@ Copyright 2026 stefan814
 
 Licensed under the Apache License, Version 2.0 (see LICENSE).
 
-This repository contains no model weights. The catalog (catalog/garden-catalog.json) points to models published by
+This repository contains no model weights. The test model list (android/harness/src/main/assets/real-catalog.json) points to models published by
 others under their own licenses, which apply to those files:
 - Parakeet TDT 110M (NVIDIA NeMo), converted for sherpa-onnx: CC-BY-4.0
 - TitaNet-small (NVIDIA NeMo): CC-BY-4.0

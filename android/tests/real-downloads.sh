@@ -18,4 +18,4 @@ for m in silero-vad-v5 titanet-small-en pyannote-seg-3.0 parakeet-tdt-110m-en-in
 done
 for m in silero-vad-v5 titanet-small-en pyannote-seg-3.0 parakeet-tdt-110m-en-int8; do run remove $m | grep STATE; done
 ADB $S uninstall $P.b >/dev/null
-echo "garden blobs left: $(ADB $S shell dumpsys blob_store | grep -c 'label:Garden model')"
+echo "garden blobs left: $(ADB $S shell dumpsys blob_store | grep -c 'label:Garden ')"

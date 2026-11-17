@@ -9,10 +9,7 @@ let package = Package(
     targets: [
         .target(
             name: "GardenKit",
-            path: "apple/Sources/GardenKit",
-            // A copy of catalog/garden-catalog.json (SwiftPM resources must sit inside the target).
-            // CatalogTests fails if the two ever differ.
-            resources: [.copy("garden-catalog.json")]
+            path: "apple/Sources/GardenKit"
         ),
         .testTarget(
             name: "GardenKitTests",

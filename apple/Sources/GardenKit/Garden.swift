@@ -50,12 +50,13 @@ public final class Garden: Sendable {
     ///   - appID: this app's name in the shared store's markers, e.g. its bundle id.
     ///   - sharedContainer: the App Group container (see [appGroupContainer]), or nil for no shared tier.
     ///   - privateDirectory: defaults to `Application Support/Garden`.
-    public init(appID: String, sharedContainer: URL?, privateDirectory: URL? = nil, catalog: Catalog? = nil,
+    ///   - catalog: this app's models (e.g. `Catalog.bundled("my-models")`).
+    public init(appID: String, sharedContainer: URL?, privateDirectory: URL? = nil, catalog: Catalog,
                 downloadAttempts: Int = 3, retryDelay: Duration = .seconds(2),
                 configuration: URLSessionConfiguration = .default) throws {
         precondition(appID.wholeMatch(of: /[A-Za-z0-9._\-]{1,128}/) != nil, "appID must be a plain name like a bundle id")
         self.appID = appID
-        self.catalog = try catalog ?? .bundled()
+        self.catalog = catalog
         self.shared = sharedContainer?.appendingPathComponent("Garden", isDirectory: true)
         self.priv = try privateDirectory ?? FileManager.default
             .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)

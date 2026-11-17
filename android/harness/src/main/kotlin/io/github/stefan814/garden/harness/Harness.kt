@@ -58,7 +58,7 @@ private class Steps(private val ctx: Context, intent: Intent) {
     private val catalog = if (intent.getStringExtra("catalog") == "test")
         Catalog.parse(ctx.assets.open("test-catalog.json").bufferedReader().use { it.readText() }
         // On a real phone the host server is reached through `adb reverse` at 127.0.0.1 instead of the emulator's 10.0.2.2.
-        .replace("10.0.2.2", intent.getStringExtra("host") ?: "10.0.2.2"), allowSameFile = true) else Catalog.bundled(ctx)
+        .replace("10.0.2.2", intent.getStringExtra("host") ?: "10.0.2.2"), allowSameFile = true) else Catalog.fromAsset(ctx, "real-catalog.json")
     private val garden = Garden(ctx, catalog, retryDelayMs = 200, downloadAttempts = intent.getIntExtra("attempts", 4))
     private val share = intent.getBooleanExtra("share", true)
     private val skip = intent.getStringExtra("skip")

@@ -1,6 +1,6 @@
 # GardenKit
 
-The Apple side of Garden: the same catalog and the same shared-or-download steps as [garden-android](../android/README.md).
+The Apple side of Garden: the same model-list format and the same shared-or-download steps as [garden-android](../android/README.md).
 Design and test results: [../DESIGN.md](../DESIGN.md).
 
 ## Use it
@@ -18,7 +18,10 @@ targets:
 import GardenKit
 
 // sharedContainer: nil when the app has no App Group (then everything is private to the app)
-let garden = try Garden(appID: "com.example.app", sharedContainer: Garden.appGroupContainer("group.io.github.stefan814.garden"))
+// catalog: this app's own models, e.g. my-models.json in the app bundle (or Catalog(models:) in code). Any model works;
+// files are shared by SHA-256, so other apps may call the same file anything.
+let garden = try Garden(appID: "com.example.app", sharedContainer: Garden.appGroupContainer("group.io.github.stefan814.garden"),
+                        catalog: .bundled("my-models"))
 switch try garden.state("silero-vad-v5") {
 case .ready: break
 case .sharedAvailable: try garden.adopt("silero-vad-v5")               // no network

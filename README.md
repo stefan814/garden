@@ -2,7 +2,9 @@
 
 Shared on-device models for our phone apps. Each model is stored once per phone, however many apps use it.
 
-Garden is for models the phone doesn't have built in, like Parakeet speech-to-text. An app asks Garden for one and
+Garden works with any model file: each app brings its own list of models, and a file is shared with every app that
+lists the same bytes (same SHA-256), whatever each app calls it. It's for models the phone doesn't have built in, like
+Parakeet speech-to-text. An app asks Garden for one and
 gets it from the first place that has it:
 
 1. **The shared store.** Another of our apps already downloaded the exact file (found by SHA-256), so this app uses that
@@ -17,10 +19,12 @@ shares those, and each app calls them directly.
 |---|---|---|
 | Library | [`android/`](android/README.md) (Kotlin) | [`apple/`](apple/README.md) (GardenKit, Swift package) |
 | Shared store | Android's BlobStoreManager (API 30+) | An App Group container (apps on the same team) |
-| Tests | 40 two-app checks on emulator + Pixel 10a | 12 unit tests + 23 two-app checks in the Simulator |
+| Tests | 9 unit tests + 51 two-app checks on the emulator | 13 unit tests + 22 two-app checks in the Simulator |
 
-Both read the same model list, [`catalog/garden-catalog.json`](catalog/garden-catalog.json). Its ids, file names and
-hashes never change once published.
+Each app passes its own model list (a JSON file in the app, or built in code). Two apps never have to agree on ids
+or file names: Garden shares by hash alone. On Android every app must still name a shared file exactly the same way
+for the system, so that name comes from the hash; files Garden shared before apps brought their own lists keep their
+old names, from a frozen table in the library ([DESIGN.md](DESIGN.md#android-design)).
 
 Apps add Garden in their own repos. This repo only holds Garden. Design notes and test results:
 [DESIGN.md](DESIGN.md).

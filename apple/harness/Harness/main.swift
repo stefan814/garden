@@ -29,9 +29,6 @@ Task {
                 let data = try Data(contentsOf: m.url(f.name))
                 say("OPEN \(f.name) bytes=\(data.count) tier=\(m.tier)")
             }
-        case "realcatalog":
-            let real = try Garden(appID: Bundle.main.bundleIdentifier!, sharedContainer: group)
-            say("REAL \(real.catalog.models.map(\.id).joined(separator: ",")) state=\(try real.state("parakeet-tdt-110m-en-int8"))")
         default: say("ERROR unknown step \(step)")
         }
         say("STATE \(id) = \(try g.state(id))")
