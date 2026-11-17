@@ -112,6 +112,18 @@
         { "name": "tokens.txt", "size": 93939, "sha256": "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d",
           "urls": ["https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/ed5d745623472f97cfc2e6c2916ee248798fc5a8/tokens.txt"] }
       ]
+    },
+    {
+      "id": "wenetspeech-yue-ctc-int8",
+      "title": "WenetSpeech-Yue speech-to-text (Cantonese)",
+      "capability": "asr.yue",
+      "license": "Apache-2.0 (ASLP-lab WSYue-ASR, U2++ Conformer), converted for sherpa-onnx",
+      "files": [
+        { "name": "model.int8.onnx", "size": 134698500, "sha256": "201bfd9e12ec4ac9ee3b23c5e071d9fa2381a8b21df317e2e08a170d6f1f55d3",
+          "urls": ["https://huggingface.co/csukuangfj/sherpa-onnx-wenetspeech-yue-u2pp-conformer-ctc-zh-en-cantonese-int8-2025-09-10/resolve/c911764e8227cf372ee60adc75f7f407e5b8c905/model.int8.onnx"] },
+        { "name": "tokens.txt", "size": 85361, "sha256": "c7750677a1183606d2fd6f16d792e06e70d9843dba8a0c6e23a9dec78e06977a",
+          "urls": ["https://huggingface.co/csukuangfj/sherpa-onnx-wenetspeech-yue-u2pp-conformer-ctc-zh-en-cantonese-int8-2025-09-10/resolve/c911764e8227cf372ee60adc75f7f407e5b8c905/tokens.txt"] }
+      ]
     }
   ]
 }
