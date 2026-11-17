@@ -26,6 +26,17 @@ or file names: Garden shares by hash alone. On Android every app must still name
 for the system, so that name comes from the hash; files Garden shared before apps brought their own lists keep their
 old names, from a frozen table in the library ([DESIGN.md](DESIGN.md#android-design)).
 
+**Versions.** Each app pins its own Garden version (Earshot and Skald use a git submodule at a tagged commit), so
+Garden can change without touching any app; an app takes a new version only when it moves its pin. Two promises make
+that safe:
+
+- **The on-device format never breaks.** Apps on different Garden versions share the same copies on one phone: the
+  Android handle naming (including the frozen v1 table) and the iPhone App Group layout (`Garden/blobs/<sha256>`,
+  `Garden/users/<sha256>/<appID>`) only ever grow. `android/tests/compat.sh` runs an app on an older Garden against
+  one on this version, both ways.
+- **The API follows semantic versioning** (tags `vMAJOR.MINOR.PATCH`). Only a new major version changes what an app
+  calls; each app keeps those calls in one file (Earshot: `ModelStore`).
+
 Apps add Garden in their own repos. This repo only holds Garden. Design notes and test results:
 [DESIGN.md](DESIGN.md).
 

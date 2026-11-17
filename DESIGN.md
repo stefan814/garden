@@ -45,6 +45,22 @@ for both apps**. Earshot's call-audio benchmark: Parakeet 110M 3.5% WER vs Moons
 Skald would need a re-check on table audio first (diarization of similar voices is its weak spot, and the ASR swap
 changes timings).
 
+## Versions and compatibility (2026-11-16)
+
+Apps pin Garden (a git submodule at a tag) instead of building whatever is checked out beside them, so a Garden
+change never forces an app change or release. That only works if versions can coexist on one phone:
+
+- **On-device format: append-only, forever.** Never rename or re-key what a published version wrote: Android handles
+  (scheme 1 table, scheme 2 `garden/v2/<sha256>`), the `garden.v1` prefs keys and `files/garden/v1` private copies,
+  the iPhone `Garden/blobs`, `Garden/users`, `.lock` layout and private folders. A new format must also read and
+  co-commit the old one.
+- **API: semantic versioning.** Tags `vMAJOR.MINOR.PATCH`; breaking calls only in a major version. v1.0.0 is the
+  model-agnostic API (app-supplied catalogs).
+- **Tested:** `android/tests/compat.sh <serial> [old ref]` builds the harness at an older Garden (default 608f565, the
+  last one with a bundled list, which Skald pins) and at HEAD, and checks both directions on one phone: share, see,
+  adopt with no network, transcribe, let go, one copy (11 checks, emulator, 2026-11-16). On iPhone the format
+  is files by hash, unchanged since GardenKit was built.
+
 ## Android design
 
 ### Shared tier = BlobStoreManager
